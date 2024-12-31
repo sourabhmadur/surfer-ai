@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "AI Browser Assistant",
+  "version": "1.0.0",
+  "description": "An AI-powered browser assistant that can perform tasks based on natural language prompts",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage",
+    "sidePanel"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "AI Browser Assistant",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["sidepanel.html", "assets/*", "content.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+} 
