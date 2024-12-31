@@ -124,93 +124,66 @@ class Agent:
 You can use these tools:
 - executor: Execute scroll actions in format "scroll [up|down] by [number] pixels"
 
-IMPORTANT: Your task is to help users navigate web pages by scrolling. There are three types of goals:
-1. Scroll a specific number of times (e.g., "scroll down 2 times")
-2. Scroll to find something (e.g., "scroll to bottom", "scroll to top")
-3. Scroll until you see something specific
+IMPORTANT: Your task is to help users navigate web pages by scrolling. When scrolling to the bottom of a page:
 
-For counting-based goals (type 1):
-- Keep track of the number of actions taken
-- Stop when you've reached the specified count
-- Use 200-300 pixels per scroll
-- Pay attention to the required direction (up or down)
+1. Primary Bottom Indicators:
+   - Footer elements are the most reliable indicator - if you see a footer, you've reached the bottom
+   - Common footer content includes:
+     * Copyright notices
+     * Social media links
+     * Contact information
+     * Legal links (Privacy Policy, Terms of Service)
+     * Newsletter signup forms
 
-For position-based goals (type 2):
-- For scrolling to bottom:
-  * Analyze the screenshot for end of page indicators
-  * Use 500-1000 pixels per scroll down
-  * Stop when you see the bottom of the page
-- For scrolling to top:
-  * Look for header/top navigation in screenshot
-  * Use 500-1000 pixels per scroll up
-  * Stop when you see the top of the page
-  * If you see the page header or URL bar, you're at the top
+2. Secondary Bottom Indicators:
+   - "Load more" or pagination buttons
+   - Large empty space after content
+   - No more content visible below
+   - No scroll change after attempt
 
-For finding specific content (type 3):
-- Analyze the screenshot after each scroll
-- Look for the specific content mentioned in the goal
-- Use appropriate scroll direction (up/down) based on current position
-- Stop when you find the target content
+3. Scrolling Strategy:
+   - Start with large scrolls (800-1000 pixels)
+   - When you start seeing any bottom indicators, switch to smaller scrolls (300-500 pixels)
+   - If you see a footer, STOP - you've reached the bottom
+   - If a scroll doesn't change position, you've reached the bottom
 
-When you want to continue scrolling, respond with:
+Example Responses:
+
+1. When starting:
 {{
-    "thought": "your reasoning based on the screenshot (what you see, why continue, which direction)",
+    "thought": "No footer visible yet, using a large scroll to move down quickly",
     "action": {{
         "tool": "executor",
         "input": {{
-            "action": "scroll [up|down] by [number] pixels"
+            "action": "scroll down by 1000 pixels"
         }},
-        "reason": "explain why this direction and amount"
+        "reason": "Using large scroll to efficiently move towards the bottom"
     }},
     "final_answer": null
 }}
 
-When you want to stop, respond with:
+2. When seeing the footer:
 {{
-    "thought": "your reasoning why to stop (found target, reached top/bottom, completed count)",
+    "thought": "I can see the page footer with copyright notice and social links - we've reached the bottom",
     "action": {{
         "tool": "none",
         "input": {{}},
-        "reason": "explain why you're stopping based on what you see"
-    }},
-    "final_answer": "describe what was accomplished"
-}}
-
-Examples:
-
-1. Counting goal:
-{{
-    "thought": "We've scrolled down once but need two scrolls total",
-    "action": {{
-        "tool": "executor",
-        "input": {{
-            "action": "scroll down by 200 pixels"
-        }},
-        "reason": "This will be scroll #2 of 2 required scrolls down"
-    }},
-    "final_answer": null
-}}
-
-2. Scrolling to bottom:
-{{
-    "thought": "I see the page footer/end of content in the screenshot",
-    "action": {{
-        "tool": "none",
-        "input": {{}},
-        "reason": "We've reached the bottom of the page as indicated by the footer"
+        "reason": "Footer is visible, confirming we've reached the bottom of the page"
     }},
     "final_answer": "Successfully scrolled to the bottom of the page"
 }}
 
-3. Scrolling to top:
+3. When approaching bottom:
 {{
-    "thought": "I can see the page header and navigation menu",
+    "thought": "I see some social media icons but not the full footer yet",
     "action": {{
-        "tool": "none",
-        "input": {{}},
-        "reason": "We've reached the top of the page as indicated by the header"
+        "tool": "executor",
+        "input": {{
+            "action": "scroll down by 300 pixels"
+        }},
+        "reason": "Using smaller scroll as we're likely near the bottom"
     }},
-    "final_answer": "Successfully scrolled to the top of the page"
+    "final_answer": null
 }}
 
 {history_section}
