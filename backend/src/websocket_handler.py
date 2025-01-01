@@ -166,10 +166,28 @@ class WebSocketHandler:
 
     async def _handle_action_result(self, message: Dict[str, Any]):
         """Handle action result message."""
-        if not self._validate_action_result(message):
-            return
-
         try:
+            # Validate message format
+            if not isinstance(message, dict):
+                logger.error("Invalid message format: not a dictionary")
+                return
+
+            # Check for success field
+            if "success" not in message:
+                logger.error("Message missing success field")
+                return
+
+            # If success is false, handle error
+            if not message["success"]:
+                error_msg = message.get("error", "Unknown error occurred")
+                await self._send_error(error_msg)
+                return
+
+            # For successful actions, expect data field
+            if "data" not in message:
+                logger.error("Successful message missing data field")
+                return
+
             # Update state with new page state
             self._update_state(message)
             
@@ -178,6 +196,7 @@ class WebSocketHandler:
             await self._handle_agent_result(result)
 
         except Exception as e:
+            logger.error(f"Error handling action result: {str(e)}", exc_info=True)
             await self._handle_execution_error(e)
 
     async def _execute_agent(self) -> Dict[str, Any]:

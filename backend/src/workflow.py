@@ -212,7 +212,8 @@ class ActionHandler:
             if not match:
                 return self._handle_invalid_action(action)
 
-            text_to_type = match.group(1)
+            # Clean the text by removing quotes
+            text_to_type = match.group(1).strip("'\"")
             element_desc = match.group(2)
 
             # If element description is provided, identify the element
@@ -228,7 +229,11 @@ class ActionHandler:
                     "result": {
                         "action": "type",
                         "text": text_to_type,
-                        "selector": element_data["selector"]
+                        "element_data": {
+                            "selector": element_data["selector"],
+                            "element_type": element_data["element_type"],
+                            "text_content": element_data["text_content"]
+                        }
                     }
                 }
             else:
