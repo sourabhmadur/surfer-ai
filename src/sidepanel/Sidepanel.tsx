@@ -32,7 +32,6 @@ export default function Sidepanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [currentSubtask, setCurrentSubtask] = useState(0);
-  const [totalSubtasks, setTotalSubtasks] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
@@ -150,7 +149,7 @@ export default function Sidepanel() {
             });
           }
 
-          handleWebSocketMessage(message);
+          handleWebSocketMessage(event);
         } catch (error) {
           console.error('=== WebSocket Parse Error ===', {
             error,
@@ -176,155 +175,229 @@ export default function Sidepanel() {
   }, []);
 
   // Handle WebSocket messages
-  const handleWebSocketMessage = (message: any) => {
-    logger.group('Message Processing');
-    logger.log('Processing message', {
-      type: message.type,
-      data: message.data
-    });
+  const handleWebSocketMessage = async (event: MessageEvent) => {
+    logger.group('WebSocket Message');
+    logger.log('Raw message:', event.data);
+    
+    try {
+        // Parse the message if it's a string
+        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        logger.log('Processed message:', message);
+        
+        // Handle completion messages
+        if (message.type === 'complete') {
+            setMessages(prev => [...prev, {
+                type: 'agent',
+                content: message.data
+            }]);
+            setIsExecuting(false);  // Stop execution when task is complete
+            return;
+        }
+        
+        // Handle error messages
+        if (message.type === 'error') {
+            setMessages(prev => [...prev, {
+                type: 'error',
+                content: message.data
+            }]);
+            setIsExecuting(false);  // Stop execution on error
+            return;
+        }
+        
+        // Handle simple text messages
+        if (message.type === 'message') {
+            // Skip displaying message if it's a description of an action that was just executed
+            if (!message.data.startsWith('Scrolling') && 
+                !message.data.startsWith('Clicking') && 
+                !message.data.startsWith('Typing')) {
+                setMessages(prev => [...prev, {
+                    type: 'agent',
+                    content: message.data
+                }]);
+            }
+            return;
+        }
 
-    // Handle test messages
-    if (message.type === 'test') {
-      logger.log('Test message response', message.data);
-      logger.groupEnd();
-      return;
-    }
+        // Handle action messages
+        if (message.type === 'action') {
+            let actionData = message.data;
+            let actionMessage = '';
 
-    if (message.type === 'plan') {
-      const { subtasks, total, is_replanning } = message.data;
-      setTotalSubtasks(total);
-      setMessages(prev => [...prev, {
-        type: 'plan',
-        content: is_replanning ? 'Adjusting plan based on current page state:' : 'Planning task execution:',
-        subtasks: subtasks,
-        isReplanning: is_replanning
-      }]);
-    }
-    else if (message.type === 'progress') {
-      const { current_subtask, message: progressMessage } = message.data;
-      setCurrentSubtask(current_subtask);
-      setMessages(prev => [...prev, {
-        type: 'progress',
-        content: progressMessage,
-        progress: current_subtask,
-        total: totalSubtasks
-      }]);
-    }
-    else if (message.type === 'action') {
-      logger.group('Action Processing');
-      logger.log('Received action message', message);
+            // Handle backend executor format
+            if (actionData.tool === 'executor' && actionData.input) {
+                actionData = actionData.input;
+            }
 
-      const actionData = message.data;
-      let actionMessage = '';
+            // Handle complete action
+            if (actionData.action === 'complete') {
+                logger.log('Task completed:', actionData);
+                setMessages(prev => [...prev, {
+                    type: 'agent',
+                    content: actionData.reason || 'Task completed successfully'
+                }]);
+                setIsExecuting(false);  // Stop execution
+                return;
+            }
 
-      // Handle scroll actions
-      if (actionData.action === 'scroll') {
-        logger.log('Processing scroll action', actionData);
-        actionMessage = `Scroll ${actionData.direction} by ${actionData.pixels} pixels`;
-        
-        // Send scroll action to background script
-        const messageToBackground = {
-          type: 'EXECUTE_ACTION',
-          action: {
-            action: 'scroll',
-            direction: actionData.direction,
-            pixels: actionData.pixels
-          }
-        };
-        
-        logger.log('Sending scroll action to background', messageToBackground);
-        chrome.runtime.sendMessage(messageToBackground, (response) => {
-          logger.log('Background response (scroll)', response);
-          handleActionResult(response);
-        });
-      }
-      // Handle click actions
-      else if (actionData.type === 'click') {
-        logger.log('Processing click action', actionData);
-        actionMessage = `Click on element: ${actionData.element}`;
-        
-        // Send click action to background script
-        const messageToBackground = {
-          type: 'EXECUTE_ACTION',
-          action: {
-            type: 'click',
-            element: actionData.element,
-            html_context: actionData.html_context
-          }
-        };
-        
-        logger.log('Sending click action to background', messageToBackground);
-        chrome.runtime.sendMessage(messageToBackground, (response) => {
-          logger.log('Background response (click)', response);
-          handleActionResult(response);
-        });
-      }
-      // Handle type actions
-      else if (actionData.action === 'type') {
-        logger.log('Processing type action', actionData);
-        actionMessage = `Type text: ${actionData.text}`;
-        
-        // Send type action to background script
-        const messageToBackground = {
-          type: 'EXECUTE_ACTION',
-          action: {
-            action: 'type',
-            text: actionData.text
-          }
-        };
-        
-        logger.log('Sending type action to background', messageToBackground);
-        chrome.runtime.sendMessage(messageToBackground, (response) => {
-          logger.log('Background response (type)', response);
-          handleActionResult(response);
-        });
-      }
-      // Handle key press actions
-      else if (actionData.action === 'press_key') {
-        logger.log('Processing key press action', actionData);
-        actionMessage = `Press key: ${actionData.key}`;
-        
-        // Send key press action to background script
-        const messageToBackground = {
-          type: 'EXECUTE_ACTION',
-          action: {
-            action: 'press_key',
-            key: actionData.key
-          }
-        };
-        
-        logger.log('Sending key press action to background', messageToBackground);
-        chrome.runtime.sendMessage(messageToBackground, (response) => {
-          logger.log('Background response (key press)', response);
-          handleActionResult(response);
-        });
-      }
-      else {
-        logger.error('Unknown action type', actionData);
-        return;
-      }
+            // Handle scroll actions
+            if (actionData.action === 'scroll') {
+                logger.log('Processing scroll action', actionData);
+                actionMessage = `Scrolling ${actionData.direction} by ${actionData.pixels} pixels`;
+                
+                try {
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (!tab?.id) {
+                        throw new Error('No active tab found');
+                    }
 
-      // Add action message to UI
-      setMessages(prev => [...prev, {
-        type: 'action',
-        content: actionMessage
-      }]);
+                    // Send scroll action to background script
+                    const messageToBackground = {
+                        type: 'EXECUTE_ACTION',
+                        action: {
+                            action: 'scroll',
+                            direction: actionData.direction,
+                            pixels: actionData.pixels
+                        },
+                        tabId: tab.id
+                    };
+                    
+                    logger.log('Sending scroll action to background', messageToBackground);
+                    chrome.runtime.sendMessage(messageToBackground, (response) => {
+                        logger.log('Background response (scroll)', response);
+                        handleActionResult(response);
+                    });
+                } catch (error) {
+                    logger.error('Failed to execute scroll action', error);
+                    handleActionResult({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Failed to execute scroll action'
+                    });
+                }
+            }
+            // Handle click actions
+            else if (actionData.action === 'click') {
+                logger.log('Processing click action', actionData);
+                actionMessage = `Click on element: ${actionData.element}`;
+                
+                // Get the current active tab first
+                try {
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (!tab?.id) {
+                        throw new Error('No active tab found');
+                    }
 
-      logger.groupEnd();
-    }
-    else if (message.type === 'error') {
-      setMessages(prev => [...prev, { 
-        type: 'error', 
-        content: message.data 
-      }]);
-      setIsExecuting(false);
-    }
-    else if (message.type === 'complete') {
-      setMessages(prev => [...prev, { 
-        type: 'agent', 
-        content: message.data 
-      }]);
-      setIsExecuting(false);
+                    // Send click action to background script
+                    const messageToBackground = {
+                        type: 'EXECUTE_ACTION',
+                        action: {
+                            action: 'click',
+                            element: actionData.element,
+                            element_data: actionData.element_data
+                        },
+                        tabId: tab.id  // Include the tab ID in the message
+                    };
+                    
+                    logger.log('Sending click action to background', messageToBackground);
+                    chrome.runtime.sendMessage(messageToBackground, (response) => {
+                        logger.log('Background response (click)', response);
+                        handleActionResult(response);
+                    });
+                } catch (error) {
+                    logger.error('Failed to execute click action', error);
+                    handleActionResult({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Failed to execute click action'
+                    });
+                }
+            }
+            // Handle type actions
+            else if (actionData.action === 'type') {
+                logger.log('Processing type action', actionData);
+                actionMessage = `Typing text: ${actionData.text}`;
+                
+                try {
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (!tab?.id) {
+                        throw new Error('No active tab found');
+                    }
+
+                    // Send type action to background script with the correct structure
+                    const messageToBackground = {
+                        type: 'EXECUTE_ACTION',
+                        action: {
+                            action: 'type',
+                            element_data: actionData.element_data,
+                            text: actionData.text  // Make sure text is passed correctly
+                        },
+                        tabId: tab.id
+                    };
+                    
+                    logger.log('Sending type action to background', messageToBackground);
+                    chrome.runtime.sendMessage(messageToBackground, (response) => {
+                        logger.log('Background response (type)', response);
+                        handleActionResult(response);
+                    });
+                } catch (error) {
+                    logger.error('Failed to execute type action', error);
+                    handleActionResult({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Failed to execute type action'
+                    });
+                }
+            }
+            else {
+                logger.error('Unknown action:', actionData);
+                handleActionResult({
+                    success: false,
+                    error: `Unknown action type: ${actionData.action}`
+                });
+            }
+
+            // Add action to messages
+            if (actionMessage) {
+                setMessages(prev => [...prev, {
+                    type: 'action',
+                    content: actionMessage
+                }]);
+            }
+            return;
+        }
+
+        logger.error('Unknown message type:', message.type);
+    } catch (error) {
+        logger.error('Error processing WebSocket message:', error);
+        // If it's a string message that failed JSON parsing, just display it
+        if (typeof event.data === 'string') {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'error') {
+                    setMessages(prev => [...prev, {
+                        type: 'error',
+                        content: message.data
+                    }]);
+                    setIsExecuting(false);  // Stop execution on error
+                } else if (message.type === 'complete') {
+                    setMessages(prev => [...prev, {
+                        type: 'agent',
+                        content: message.data
+                    }]);
+                    setIsExecuting(false);  // Stop execution on completion
+                } else if (message.type === 'message' && 
+                    !message.data.startsWith('Scrolling') && 
+                    !message.data.startsWith('Clicking') && 
+                    !message.data.startsWith('Typing')) {
+                    setMessages(prev => [...prev, {
+                        type: 'agent',
+                        content: message.data
+                    }]);
+                }
+            } catch (innerError) {
+                setMessages(prev => [...prev, {
+                    type: 'agent',
+                    content: event.data
+                }]);
+            }
+        }
     }
     logger.groupEnd();
   };
@@ -402,7 +475,6 @@ export default function Sidepanel() {
     setIsExecuting(true);
     setMessages(prev => [...prev, { type: 'user', content: task }]);
     setCurrentSubtask(0);
-    setTotalSubtasks(0);
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

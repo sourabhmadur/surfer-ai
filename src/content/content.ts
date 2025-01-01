@@ -24,6 +24,11 @@
       const errorMessage = error ? `${message}: ${error.message || JSON.stringify(error)}` : message;
       console.error(`%c[Content Script Error] ${errorMessage}`, 'background: #ff0000; color: #fff; padding: 2px 4px; border-radius: 2px;');
       showVisualLog(errorMessage, true);
+    },
+    warn: (message: string, data?: any) => {
+      const warnMessage = data ? `${message}: ${JSON.stringify(data)}` : message;
+      console.warn(`%c[Content Script Warning] ${warnMessage}`, 'background: #ff9900; color: #fff; padding: 2px 4px; border-radius: 2px;');
+      showVisualLog(warnMessage);
     }
   };
 
@@ -54,78 +59,122 @@
     }
   }
 
-  interface ScrollAction {
-    action: 'scroll';
-    direction: 'up' | 'down';
-    pixels: number;
+  // Function to handle scroll
+  function handleScroll(direction: 'up' | 'down', pixels: number): Promise<ScrollResult> {
+    return new Promise((resolve) => {
+      // Get initial measurements
+      const startPosition = window.scrollY;
+      const documentHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight,
+        document.body.clientHeight,
+        document.documentElement.clientHeight
+      );
+      const viewportHeight = window.innerHeight;
+      const maxScroll = documentHeight - viewportHeight;
+
+      // Log initial state
+      logger.log('Scroll Initial State:', {
+        startPosition,
+        documentHeight,
+        viewportHeight,
+        maxScroll,
+        direction,
+        pixels
+      });
+
+      // Calculate target position
+      const scrollAmount = direction === 'down' ? pixels : -pixels;
+      const targetPosition = Math.max(0, Math.min(startPosition + scrollAmount, maxScroll));
+
+      // Check if we're already at the limit
+      if ((direction === 'up' && startPosition <= 0) || 
+          (direction === 'down' && startPosition >= maxScroll)) {
+        logger.log('Already at scroll limit', {
+          direction,
+          startPosition,
+          maxScroll
+        });
+        resolve({
+          success: true,
+          details: {
+            scrolled: false,
+            startPosition,
+            endPosition: startPosition,
+            requestedChange: scrollAmount,
+            actualChange: 0,
+            isAtBottom: startPosition >= maxScroll,
+            isAtTop: startPosition <= 0,
+            maxScroll,
+            viewportHeight,
+            documentHeight
+          }
+        });
+        return;
+      }
+
+      // Perform the scroll
+      window.scrollTo({
+        top: targetPosition,
+        behavior: 'smooth'
+      });
+
+      // Wait for scroll to complete and check final position
+      setTimeout(() => {
+        const endPosition = window.scrollY;
+        const actualChange = endPosition - startPosition;
+        const isAtBottom = endPosition >= maxScroll - 1;
+        const isAtTop = endPosition <= 0;
+
+        // Log final state
+        logger.log('Scroll Final State:', {
+          startPosition,
+          endPosition,
+          actualChange,
+          isAtBottom,
+          isAtTop,
+          maxScroll
+        });
+
+        resolve({
+          success: true,
+          details: {
+            scrolled: actualChange !== 0,
+            startPosition,
+            endPosition,
+            requestedChange: scrollAmount,
+            actualChange,
+            isAtBottom,
+            isAtTop,
+            maxScroll,
+            viewportHeight,
+            documentHeight
+          }
+        });
+      }, 500);
+    });
   }
 
-  // Function to handle scroll
-  function handleScroll(action: ScrollAction | string) {
-    logger.log('Handling Scroll Action', { action, type: typeof action });
+  // Function to handle click actions
+  function handleClick(element_data: any) {
+    logger.log('Handling Click Action', { element_data });
     
     try {
-      let scrollAmount: number;
+      const { selector, element_type, text_content } = element_data;
       
-      if (typeof action === 'string') {
-        // Parse string-formatted scroll action
-        const match = action.match(/\[(.*?)\]/);
-        if (!match) {
-          throw new Error('Invalid scroll action format');
-        }
-        
-        const actionStr = match[1];
-        logger.log('Parsed String Action', actionStr);
-        
-        // Extract direction and pixels
-        const parts = actionStr.split(' ');
-        if (parts[0] !== 'scroll' || !['up', 'down'].includes(parts[1]) || parts[2] !== 'by' || isNaN(parseInt(parts[3]))) {
-          throw new Error('Invalid scroll action format');
-        }
-        
-        scrollAmount = parts[1] === 'up' ? -parseInt(parts[3]) : parseInt(parts[3]);
-      } else {
-        // Handle structured scroll action
-        logger.log('Handling Structured Action', action);
-        
-        // Ensure we have a valid scroll action
-        if (!action || typeof action !== 'object') {
-          throw new Error('Invalid scroll action: not an object');
-        }
-        
-        // Handle potentially nested action structure
-        const scrollAction = 'type' in action ? action.action : action;
-        logger.log('Extracted Scroll Action', scrollAction);
-        
-        if (!scrollAction || typeof scrollAction !== 'object') {
-          throw new Error('Invalid scroll action: missing action object');
-        }
-        
-        if (!scrollAction.direction || !scrollAction.pixels || !['up', 'down'].includes(scrollAction.direction)) {
-          throw new Error(`Invalid scroll action format: ${JSON.stringify(scrollAction)}`);
-        }
-        
-        scrollAmount = scrollAction.direction === 'up' ? -scrollAction.pixels : scrollAction.pixels;
+      // Find the element using the selector
+      const element = document.querySelector(selector);
+      if (!element) {
+        throw new Error(`Element not found with selector: ${selector}`);
       }
-      
-      // Log current scroll position and document dimensions
-      const startPosition = window.scrollY;
-      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      
-      logger.log('Scroll Details', {
-        startPosition,
-        scrollAmount,
-        maxScroll,
-        documentHeight: document.documentElement.scrollHeight,
-        viewportHeight: window.innerHeight,
-        canScroll: maxScroll > 0
-      });
 
       // Create visual indicator
       const indicator = document.createElement('div');
       indicator.style.cssText = `
         position: fixed;
-        ${scrollAmount > 0 ? 'bottom' : 'top'}: 20px;
+        top: 20px;
         left: 50%;
         transform: translateX(-50%);
         background: rgba(0, 0, 0, 0.7);
@@ -136,122 +185,194 @@
         font-family: sans-serif;
         font-size: 12px;
       `;
-      indicator.textContent = `Scrolling ${scrollAmount > 0 ? 'down' : 'up'} by ${Math.abs(scrollAmount)}px`;
+      indicator.textContent = `Clicking element: ${text_content || selector}`;
       document.body.appendChild(indicator);
 
-      // Try different scroll methods
-      const scrollMethods = [
-        // Method 1: window.scrollBy with smooth behavior
-        () => {
-          logger.log('Trying window.scrollBy with smooth behavior');
-          window.scrollBy({
-            top: scrollAmount,
-            behavior: 'smooth'
-          });
-        },
-        // Method 2: window.scrollTo with smooth behavior
-        () => {
-          logger.log('Trying window.scrollTo with smooth behavior');
-          window.scrollTo({
-            top: Math.max(0, Math.min(startPosition + scrollAmount, maxScroll)),
-            behavior: 'smooth'
-          });
-        },
-        // Method 3: Direct scroll with requestAnimationFrame
-        () => {
-          logger.log('Trying requestAnimationFrame scroll');
-          const startTime = performance.now();
-          const duration = 500; // 500ms animation
-          
-          function animate(currentTime: number) {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Ease-out function
-            const easeProgress = 1 - Math.pow(1 - progress, 3);
-            
-            const currentScroll = startPosition + (scrollAmount * easeProgress);
-            window.scrollTo(0, currentScroll);
-            
-            if (progress < 1) {
-              requestAnimationFrame(animate);
-            }
-          }
-          
-          requestAnimationFrame(animate);
-        },
-        // Method 4: Element.scrollIntoView
-        () => {
-          logger.log('Trying scrollIntoView');
-          const targetY = startPosition + scrollAmount;
-          const elements = document.elementsFromPoint(window.innerWidth / 2, targetY);
-          if (elements.length > 0) {
-            elements[0].scrollIntoView({
-              behavior: 'smooth',
-              block: scrollAmount > 0 ? 'end' : 'start'
-            });
-          }
-        }
-      ];
+      // Highlight the element temporarily
+      const originalOutline = element.style.outline;
+      element.style.outline = '2px solid red';
 
-      // Try each method in sequence
-      let methodIndex = 0;
-      const tryNextMethod = () => {
-        if (methodIndex < scrollMethods.length) {
-          try {
-            logger.log(`Attempting scroll method ${methodIndex + 1}`);
-            scrollMethods[methodIndex]();
-            methodIndex++;
-          } catch (error) {
-            logger.log(`Method ${methodIndex + 1} failed, trying next method`, error);
-            methodIndex++;
-            tryNextMethod();
-          }
-        }
-      };
+      // Scroll element into view if needed
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-      tryNextMethod();
-
-      // Return a promise that resolves after the scroll completes
+      // Click the element
       return new Promise<any>((resolve) => {
         setTimeout(() => {
-          const endPosition = window.scrollY;
-          const actualChange = endPosition - startPosition;
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          
-          logger.log('Scroll Complete', {
-            startPosition,
-            endPosition,
-            requestedChange: scrollAmount,
-            actualChange,
-            success: Math.abs(actualChange) > 0,
-            isAtBottom: Math.abs(maxScroll - endPosition) < 10,
-            isAtTop: endPosition <= 0
-          });
-          
-          indicator.remove();
-          
-          resolve({
-            success: Math.abs(actualChange) > 0,
-            details: {
-              scrolled: Math.abs(actualChange) > 0,
-              startPosition,
-              endPosition,
-              requestedChange: scrollAmount,
-              actualChange,
-              isAtBottom: Math.abs(maxScroll - endPosition) < 10,
-              isAtTop: endPosition <= 0,
-              maxScroll: maxScroll
+          try {
+            // Special handling for submit buttons
+            if (element instanceof HTMLInputElement && element.type === 'submit') {
+              // Find the parent form
+              const form = element.closest('form');
+              if (form) {
+                // Submit the form
+                form.submit();
+              } else {
+                // Fallback to regular click if no form found
+                element.click();
+              }
+            } else {
+              // Regular click for non-submit elements
+              (element as HTMLElement).click();
             }
-          });
-        }, 1000); // Increased wait time for smooth scroll
+            
+            element.style.outline = originalOutline;
+            indicator.remove();
+            resolve({
+              success: true,
+              details: {
+                clicked: true,
+                selector,
+                element_type,
+                text_content
+              }
+            });
+          } catch (error) {
+            element.style.outline = originalOutline;
+            indicator.remove();
+            resolve({
+              success: false,
+              details: {
+                error: error instanceof Error ? error.message : 'Failed to click element'
+              }
+            });
+          }
+        }, 500); // Wait for scroll to complete
       });
     } catch (error) {
-      logger.error('Error Handling Scroll', error);
-      return Promise.resolve({
-        success: false,
-        details: { error: error instanceof Error ? error.message : 'Unknown error' }
-      });
+      logger.error('Error Handling Click', error);
+      return Promise.reject(error);
+    }
+  }
+
+  // First, let's add an interface for the scroll result
+  interface ScrollResult {
+    success: boolean;
+    details?: {
+      scrolled: boolean;
+      startPosition: number;
+      endPosition: number;
+      requestedChange: number;
+      actualChange: number;
+      isAtBottom: boolean;
+      isAtTop: boolean;
+      maxScroll: number;
+      viewportHeight: number;
+      documentHeight: number;
+    };
+    error?: string;
+  }
+
+  // Add interface for action response
+  interface ActionResponse {
+    success: boolean;
+    details: {
+      error?: string;
+      element?: string;
+      text?: string;
+      [key: string]: any;
+    };
+  }
+
+  // Function to handle type action
+  async function handleTypeAction(data: any): Promise<ActionResponse> {
+    try {
+        let targetElement: HTMLElement | null = null;
+        
+        logger.log('Type action data:', data);  // Add debug logging
+        
+        // If element_data is provided, find the element using the selector
+        if (data.element_data?.selector) {
+            targetElement = document.querySelector(data.element_data.selector);
+            if (!targetElement) {
+                return {
+                    success: false,
+                    details: {
+                        error: `Element not found with selector: ${data.element_data.selector}`
+                    }
+                };
+            }
+        } else {
+            // Fallback to currently focused element
+            targetElement = document.activeElement as HTMLElement;
+        }
+
+        // Check if we have a valid input element
+        if (!targetElement || !(targetElement instanceof HTMLInputElement || 
+            targetElement instanceof HTMLTextAreaElement)) {
+            return {
+                success: false,
+                details: {
+                    error: 'Target element cannot accept text input'
+                }
+            };
+        }
+
+        // Create visual indicator
+        const indicator = document.createElement('div');
+        indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            z-index: 999999;
+            font-family: sans-serif;
+            font-size: 12px;
+        `;
+        indicator.textContent = `Typing: ${data.text}`;
+        document.body.appendChild(indicator);
+
+        // Highlight the element temporarily
+        const originalOutline = targetElement.style.outline;
+        targetElement.style.outline = '2px solid blue';
+
+        // Scroll element into view if needed
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Wait for scroll to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        try {
+            logger.log('Setting value:', data.text);  // Add debug logging
+            
+            // Focus the element
+            targetElement.focus();
+            
+            // Set the value
+            (targetElement as HTMLInputElement | HTMLTextAreaElement).value = data.text;
+
+            // Dispatch events
+            targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+            targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Clean up
+            targetElement.style.outline = originalOutline;
+            setTimeout(() => indicator.remove(), 1000);
+
+            return {
+                success: true,
+                details: {
+                    element: targetElement.tagName.toLowerCase(),
+                    selector: data.element_data?.selector,
+                    text: data.text
+                }
+            };
+        } catch (error) {
+            targetElement.style.outline = originalOutline;
+            indicator.remove();
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error in handleTypeAction:', error);
+        return {
+            success: false,
+            details: {
+                error: error instanceof Error ? error.message : 'Failed to type text'
+            }
+        };
     }
   }
 
@@ -282,61 +403,80 @@
     }
 
     // Set up message listener
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      logger.log('Message Received', {
-        type: message.type,
-        action: message.action,
-        sender
-      });
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      console.log('Content script received message:', message);
 
-      // Handle PING message
       if (message.type === 'PING') {
-        logger.log('Received PING');
         sendResponse({ status: 'ready' });
         return true;
       }
 
-      // Handle action execution
       if (message.type === 'EXECUTE_ACTION') {
-        logger.log('Executing Action', message.action);
+        const action = message.action;
         
-        // Handle scroll actions
-        if ((typeof message.action === 'string' && message.action.includes('scroll')) || 
-            (typeof message.action === 'object' && 
-             ((message.action.action === 'scroll') || 
-              (message.action.type === 'EXECUTE_ACTION' && message.action.action?.action === 'scroll')))) {
-          
-          logger.log('Detected Scroll Action', message.action);
-          
-          // Extract the actual scroll action
-          const scrollAction = typeof message.action === 'object' 
-            ? (message.action.type === 'EXECUTE_ACTION' ? message.action.action : message.action)
-            : message.action;
-          
-          logger.log('Extracted Scroll Action', scrollAction);
-          
-          // Execute scroll
-          handleScroll(scrollAction)
-            .then(result => {
-              logger.log('Scroll Action Result', result);
-              sendResponse(result);
+        if (action.action === 'scroll') {
+          // Handle scroll action asynchronously
+          handleScroll(action.direction, action.pixels)
+            .then((scrollResult: ScrollResult) => {
+              logger.log('Scroll Result:', scrollResult);
+              sendResponse(scrollResult);
             })
-            .catch(error => {
-              logger.error('Scroll Action Error', error);
+            .catch((error: Error) => {
+              logger.error('Scroll Error:', error);
               sendResponse({
                 success: false,
-                details: { error: error instanceof Error ? error.message : String(error) }
+                error: error.message || 'Scroll action failed'
               });
             });
-          
-          return true; // Keep the message channel open
+          return true; // Keep the message channel open for async response
         }
+        else if (action.action === 'click') {
+          // Handle click action asynchronously
+          handleClick(action.element_data)
+            .then((clickResult: any) => {
+              logger.log('Click Result:', clickResult);
+              sendResponse(clickResult);
+            })
+            .catch((error: Error) => {
+              logger.error('Click Error:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Click action failed'
+              });
+            });
+          return true; // Keep the message channel open for async response
+        }
+        else if (action.action === 'type') {
+          logger.log('Handling type action:', action);  // Add debug logging
+          handleTypeAction(action)
+            .then(response => {
+              logger.log('Type action response:', response);
+              sendResponse(response);
+            })
+            .catch(error => {
+              logger.error('Error in type action:', error);
+              sendResponse({
+                success: false,
+                details: {
+                  error: error instanceof Error ? error.message : 'Failed to type text'
+                }
+              });
+            });
+          return true;  // Will respond asynchronously
+        }
+        else {
+          sendResponse({
+            success: false,
+            details: {
+              error: `Unknown action type: ${action.action}`
+            }
+          });
+        }
+        return true;  // Will respond asynchronously
       }
 
-      // Acknowledge unhandled messages
-      logger.log('Unhandled Message Type', message.type);
-      sendResponse({ received: true });
-      return true;
+      logger.warn('Unhandled Message Type:', message.type);
+      return false;
     });
   }
 
