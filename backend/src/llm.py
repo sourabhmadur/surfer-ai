@@ -1,42 +1,49 @@
 """LLM provider module."""
+import logging
 from typing import Optional
-from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from config import settings, ModelProvider
 
+logger = logging.getLogger(__name__)
+
 class LLMProvider:
-    """Provider for LLM instances."""
+    """Provider for LLM models."""
     
-    _instance = None
+    _instance: Optional[ChatGoogleGenerativeAI | ChatOpenAI | ChatAnthropic] = None
     
     @classmethod
     def get_llm(cls):
-        """Get LLM instance based on configuration."""
+        """Get LLM instance."""
         if cls._instance is None:
-            if settings.MODEL_PROVIDER == ModelProvider.OPENAI:
-                if not settings.OPENAI_API_KEY:
-                    raise ValueError("OPENAI_API_KEY not set in environment")
-                cls._instance = ChatOpenAI(
-                    model=settings.OPENAI_MODEL,
-                    temperature=0,
-                    api_key=settings.OPENAI_API_KEY,
-                    max_tokens=1000
-                )
-            elif settings.MODEL_PROVIDER == ModelProvider.GEMINI:
-                if not settings.GOOGLE_API_KEY:
-                    raise ValueError("GOOGLE_API_KEY not set in environment")
+            logger.info(f"Initializing LLM with provider: {settings.model_provider}")
+            
+            if settings.model_provider == ModelProvider.GOOGLE:
                 cls._instance = ChatGoogleGenerativeAI(
-                    model=settings.GEMINI_MODEL,
-                    temperature=0,
-                    google_api_key=settings.GOOGLE_API_KEY,
-                    convert_system_message_to_human=True
+                    model=settings.model_name,
+                    temperature=settings.temperature,
+                    max_output_tokens=settings.max_tokens,
+                    convert_system_message_to_human=True,
+                    google_api_key=settings.google_api_key
+                )
+            elif settings.model_provider == ModelProvider.OPENAI:
+                cls._instance = ChatOpenAI(
+                    model=settings.model_name,
+                    temperature=settings.temperature,
+                    max_tokens=settings.max_tokens,
+                    openai_api_key=settings.openai_api_key
+                )
+            elif settings.model_provider == ModelProvider.ANTHROPIC:
+                cls._instance = ChatAnthropic(
+                    model=settings.model_name,
+                    temperature=settings.temperature,
+                    max_tokens=settings.max_tokens,
+                    anthropic_api_key=settings.anthropic_api_key
                 )
             else:
-                raise ValueError(f"Unsupported model provider: {settings.MODEL_PROVIDER}")
+                raise ValueError(f"Unsupported model provider: {settings.model_provider}")
+            
+            logger.info("LLM initialized successfully")
         
-        return cls._instance
-    
-    @classmethod
-    def reset(cls):
-        """Reset the LLM instance."""
-        cls._instance = None 
+        return cls._instance 
