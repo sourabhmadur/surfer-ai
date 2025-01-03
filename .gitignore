@@ -1,3 +1,23 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# iCloud files
+*.icloud
+.icloud
+**/.icloud
+**/*.icloud
+
 # Python
 __pycache__/
 *.py[cod]
@@ -19,23 +39,58 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 .env
-*.log
 
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+.ENV/
 
-# IDEs and editors
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.DS_Store
-Thumbs.db
+*.swn
+*.bak
+
+# Logs
+*.log
+logs/
+log/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
