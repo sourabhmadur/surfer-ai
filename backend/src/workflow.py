@@ -1,7 +1,6 @@
 """Browser automation workflow module."""
 from typing import List, Dict, Any, Union, Optional
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 import logging
 import json
 import os
@@ -10,6 +9,7 @@ from enum import Enum, auto
 from dotenv import load_dotenv
 from prompts import SYSTEM_PROMPT, USER_PROMPT
 from llm import LLMProvider
+from tools.element_identifier import ElementIdentifier
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -38,143 +38,6 @@ class BrowserState(BaseModel):
     session_id: int = Field(...)
     last_action_result: Optional[Dict[str, Any]] = None
     llm_conversation: List[Dict[str, Any]] = Field(default_factory=list)
-
-class ElementIdentifier:
-    """Handles element identification using LLM."""
-    def __init__(self, model):
-        self.model = model
-
-    def identify_element(self, element_desc: str, html: str) -> Dict[str, Any]:
-        """Identify DOM element based on description."""
-        logger.info(f"=== Identifying Element === Description: {element_desc}")
-        
-        try:
-            # Get LLM response
-            response = self._get_llm_response(element_desc, html)
-            element_data = self._parse_llm_response(response)
-            
-            # Validate and log results
-            self._validate_and_log_results(element_data, element_desc)
-            
-            return {
-                "success": True,
-                "element_data": element_data
-            }
-        except Exception as e:
-            logger.error(f"Failed to identify element: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Failed to identify element: {str(e)}"
-            }
-
-    def _get_llm_response(self, element_desc: str, html: str) -> str:
-        """Get response from LLM."""
-        prompt = self._build_prompt(element_desc, html)
-        messages = self._build_messages(prompt)
-        
-        logger.info("Sending request to LLM...")
-        response = self.model.invoke(messages)
-        logger.info(f"Raw LLM response: {response.content}")
-        return response.content
-
-    def _parse_llm_response(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response into structured data."""
-        cleaned_content = re.sub(r'^```json\s*|\s*```$', '', content.strip())
-        return json.loads(cleaned_content)
-
-    def _validate_and_log_results(self, element_data: Dict[str, Any], element_desc: str):
-        """Validate and log element identification results."""
-        logger.info("=== Element Identified ===")
-        logger.info(f"Selector: {element_data.get('selector')}")
-        logger.info(f"Element Type: {element_data.get('element_type')}")
-        logger.info(f"Text Content: {element_data.get('text_content')}")
-        logger.info(f"Confidence: {element_data.get('confidence')}")
-
-        if element_data.get('confidence', 0) < 0.7:
-            logger.warning(f"Low confidence ({element_data.get('confidence')}) for element: {element_desc}")
-        
-        if not element_data.get('selector'):
-            logger.error("No selector returned by LLM")
-        elif 'http' in element_data['selector'].lower():
-            logger.warning("Selector contains URL - this might be fragile")
-
-    @staticmethod
-    def _build_prompt(element_desc: str, html: str) -> str:
-        """Build prompt for element identification."""
-        return f"""Given the HTML content and element description below, identify the most appropriate DOM element.
-
-Element Description: {element_desc}
-
-HTML Content:
-{html}
-
-You MUST respond with a JSON object in this EXACT format:
-{{
-    "selector": "CSS selector to uniquely identify the element",
-    "element_type": "Type of element (e.g., button, link, input)",
-    "text_content": "Visible text content of the element",
-    "confidence": "Number between 0 and 1 indicating confidence in the match"
-}}
-
-Requirements for selector generation:
-1. PREFER these selector strategies in order:
-   - Link text using attribute selector: a[href][title='exact text']
-   - Link text using partial match: a[href*='relevant-text']
-   - Unique attributes: [data-testid='x'], [aria-label='x']
-   - Unique classes: .specific-class
-   - Combinations of simple attributes
-2. AVOID these invalid or fragile selectors:
-   - jQuery selectors like :contains() (NOT valid CSS)
-   - Complex child selectors with multiple levels
-   - Numeric or generated IDs (they often change)
-   - Position-based selectors like nth-child
-   - Full XPaths
-3. For links/buttons with text:
-   - Use href/title/aria-label attributes
-   - Or use parent class + element type
-4. Keep selectors simple and valid CSS
-5. Test that selector works in the provided HTML
-6. Never use jQuery-specific selectors
-
-Example Responses:
-For a link with text "Sign up":
-{{
-    "selector": "a[title='Sign up']",
-    "element_type": "link",
-    "text_content": "Sign up",
-    "confidence": 0.95
-}}
-
-For a link in a specific section:
-{{
-    "selector": ".article-section a[href*='minecraft']",
-    "element_type": "link",
-    "text_content": "Minecraft Article",
-    "confidence": 0.95
-}}
-
-For a button:
-{{
-    "selector": "[data-testid='submit-button']",
-    "element_type": "button",
-    "text_content": "Submit Form",
-    "confidence": 0.95
-}}
-
-Analyze the HTML and provide the element details in the specified JSON format."""
-
-    @staticmethod
-    def _build_messages(prompt: str) -> List[Dict[str, str]]:
-        """Build messages for LLM."""
-        return [
-            {
-                "role": "system", 
-                "content": """You are an expert at analyzing HTML and identifying DOM elements. 
-                You ALWAYS respond with valid JSON in the exact format specified in the prompt.
-                You NEVER include explanations or additional text outside the JSON structure."""
-            },
-            {"role": "user", "content": prompt}
-        ]
 
 class ActionHandler:
     """Handles execution of browser actions."""
@@ -549,20 +412,6 @@ class Agent:
         except Exception as e:
             logger.error(f"Error executing action: {str(e)}")
             return self._handle_error(f"Error executing action: {str(e)}")
-
-    @staticmethod
-    def _validate_action(action: Dict[str, Any]) -> bool:
-        """Validate action format."""
-        if isinstance(action, str):
-            return True
-        if isinstance(action, dict):
-            # Check for input.action format
-            if "input" in action and isinstance(action["input"], dict) and "action" in action["input"]:
-                return True
-            # Check for name/input format
-            if "name" in action and "input" in action:
-                return True
-        return False
 
     @staticmethod
     def _handle_completion(final_answer: str) -> Dict[str, Any]:
