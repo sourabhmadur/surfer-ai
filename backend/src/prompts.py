@@ -28,10 +28,11 @@ Analyze the current state and determine the next action. You must respond in thi
 }}
 
 Action Formats:
-1. Typing: "type 'text' into 'field description'"
+1. Typing: First "click on 'input element'" then "type 'text' into 'input element'"
 2. Clicking: "click on 'element description'"
 3. Scrolling: "scroll up/down by X pixels"
-4. Complete: "complete" (when goal is achieved)
+4. Keypress: "keypress Enter/Tab/Escape"
+5. Complete: "complete" (when goal is achieved)
 
 CRITICAL REQUIREMENTS:
 - Always use the exact JSON format shown above
@@ -40,6 +41,131 @@ CRITICAL REQUIREMENTS:
 - Only perform actions explicitly requested in the goal
 - Stop once the specific goal is achieved
 - When scrolling to bottom, stop if screenshot shows no new content after scroll
+- ALWAYS click on the input element directly (not its parent form) before typing
+- When clicking for typing, ALWAYS target the specific input element (e.g., input[type="text"], input[type="search"], textarea)
+- NEVER click on form elements when trying to type - click the input element itself
+- For search suggestions, wait for them to appear after typing before clicking
+- NEVER mark a search goal as complete after just typing - MUST press Enter or click a suggestion
+- For any search goal, the sequence MUST be: click input → type text → (press Enter OR click suggestion)
+
+Example Response (when goal is "search for 'python'"):
+{{
+    "thought": {{
+        "previous_actions": "No actions taken yet",
+        "current_state": "Need to click the search input element before typing",
+        "next_step": "Click on the search input element to focus it",
+        "goal_progress": "Starting the search sequence"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "click on 'search input'"
+        }},
+        "reason": "Need to focus the search input element before typing"
+    }}
+}}
+
+Example Response (after clicking search input):
+{{
+    "thought": {{
+        "previous_actions": "Clicked on the search input element",
+        "current_state": "Search input is focused, ready to type",
+        "next_step": "Type the search query 'python'",
+        "goal_progress": "About to enter search text"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "type 'python' into 'search input'"
+        }},
+        "reason": "Entering the search query into the focused search input"
+    }}
+}}
+
+Example Response (after typing search query):
+{{
+    "thought": {{
+        "previous_actions": "Clicked search input and typed 'python'",
+        "current_state": "Search query entered but not submitted yet",
+        "next_step": "Need to submit the search by pressing Enter",
+        "goal_progress": "Need to submit search to complete goal"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "keypress Enter"
+        }},
+        "reason": "Must submit the search query to complete the search goal"
+    }}
+}}
+
+Example Response (when goal is "search for 'javascript' and click first suggestion"):
+{{
+    "thought": {{
+        "previous_actions": "No actions taken yet",
+        "current_state": "Need to click the search input element before typing",
+        "next_step": "Click on the search input element to focus it",
+        "goal_progress": "Starting the search sequence"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "click on 'search input'"
+        }},
+        "reason": "Need to focus the search input element before typing"
+    }}
+}}
+
+Example Response (after clicking search input):
+{{
+    "thought": {{
+        "previous_actions": "Clicked on the search input element",
+        "current_state": "Search input is focused, ready to type",
+        "next_step": "Type the search query 'javascript'",
+        "goal_progress": "About to enter search text"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "type 'javascript' into 'search input'"
+        }},
+        "reason": "Entering the search query into the focused search input"
+    }}
+}}
+
+Example Response (after typing, when using suggestion):
+{{
+    "thought": {{
+        "previous_actions": "Clicked search input and typed 'javascript'",
+        "current_state": "Search suggestions are visible below the search input",
+        "next_step": "Click on the first search suggestion",
+        "goal_progress": "About to complete search by clicking suggestion"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "click on 'first search suggestion'"
+        }},
+        "reason": "Must click a suggestion to complete the search goal"
+    }}
+}}
+
+Example Response (when goal is "press enter"):
+{{
+    "thought": {{
+        "previous_actions": "No actions taken yet",
+        "current_state": "Page loaded, need to press Enter key",
+        "next_step": "Press the Enter key",
+        "goal_progress": "About to complete the goal"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "keypress Enter"
+        }},
+        "reason": "Pressing Enter key as requested in the goal"
+    }}
+}}
 
 Example Response (when goal is "scroll to bottom" and starting from top):
 {{
@@ -133,10 +259,11 @@ You must ALWAYS respond in this exact JSON format:
 }}
 
 Available Actions:
-1. type 'text' into 'field description' - Type text into an input field
-2. click on 'element description' - Click on an element
+1. click on 'element description' - Click on an element (REQUIRED before typing, must click input element directly)
+2. type 'text' into 'input element' - Type text into an input field (must click input first)
 3. scroll up/down by X pixels - Scroll the page
-4. complete - Indicate the goal is achieved
+4. keypress Enter/Tab/Escape - Send keyboard events
+5. complete - Indicate the goal is achieved
 
 Guidelines:
 - Always use the exact JSON format shown above
@@ -144,11 +271,50 @@ Guidelines:
 - Use "complete" as the action when goal is achieved
 - Only perform actions explicitly requested in the goal
 - Stop once the goal is achieved
-- No need to click before typing - use type directly
+- ALWAYS click on the input element directly before typing
+- NEVER click on form elements - always click the specific input element
+- When clicking for typing, target input[type="text"], input[type="search"], or textarea elements
+- For search suggestions, wait for them to appear after typing before clicking
+- NEVER mark a search goal as complete after just typing - MUST press Enter or click a suggestion
+- For any search goal, the sequence MUST be: click input → type text → (press Enter OR click suggestion)
 - Be specific in element descriptions
 - Always explain your reasoning in the thought fields
 - When scrolling to bottom, stop if screenshot shows no new content
 - Compare each screenshot with the previous one to detect bottom of page
+
+Example Response (when searching with Enter key):
+{{
+    "thought": {{
+        "previous_actions": "Clicked search input and typed query",
+        "current_state": "Search query entered but not submitted",
+        "next_step": "Need to press Enter to submit search",
+        "goal_progress": "Must submit search to complete goal"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "keypress Enter"
+        }},
+        "reason": "Must submit the search by pressing Enter to complete the search goal"
+    }}
+}}
+
+Example Response (when searching with suggestion click):
+{{
+    "thought": {{
+        "previous_actions": "Clicked search input and typed query",
+        "current_state": "Search suggestions are visible below input",
+        "next_step": "Click the relevant search suggestion",
+        "goal_progress": "Must click suggestion to complete goal"
+    }},
+    "action": {{
+        "tool": "executor",
+        "input": {{
+            "action": "click on 'first search suggestion'"
+        }},
+        "reason": "Must click a suggestion to complete the search goal"
+    }}
+}}
 
 Example Response (when scrolling and screenshots are identical):
 {{
