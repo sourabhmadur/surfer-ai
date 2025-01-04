@@ -44,9 +44,9 @@ CRITICAL REQUIREMENTS:
 - ALWAYS click on the input element directly (not its parent form) before typing
 - When clicking for typing, ALWAYS target the specific input element (e.g., input[type="text"], input[type="search"], textarea)
 - NEVER click on form elements when trying to type - click the input element itself
-- For search suggestions, wait for them to appear after typing before clicking
-- NEVER mark a search goal as complete after just typing - MUST press Enter or click a suggestion
-- For any search goal, the sequence MUST be: click input → type text → (press Enter OR click suggestion)
+- NEVER mark a search goal as complete after just typing - MUST press Enter
+- For any search goal, the sequence MUST be: click input → type text → press Enter
+- ALWAYS press Enter to submit searches, NEVER click on search suggestions
 
 Example Response (when goal is "search for 'python'"):
 {{
@@ -95,58 +95,7 @@ Example Response (after typing search query):
         "input": {{
             "action": "keypress Enter"
         }},
-        "reason": "Must submit the search query to complete the search goal"
-    }}
-}}
-
-Example Response (when goal is "search for 'javascript' and click first suggestion"):
-{{
-    "thought": {{
-        "previous_actions": "No actions taken yet",
-        "current_state": "Need to click the search input element before typing",
-        "next_step": "Click on the search input element to focus it",
-        "goal_progress": "Starting the search sequence"
-    }},
-    "action": {{
-        "tool": "executor",
-        "input": {{
-            "action": "click on 'search input'"
-        }},
-        "reason": "Need to focus the search input element before typing"
-    }}
-}}
-
-Example Response (after clicking search input):
-{{
-    "thought": {{
-        "previous_actions": "Clicked on the search input element",
-        "current_state": "Search input is focused, ready to type",
-        "next_step": "Type the search query 'javascript'",
-        "goal_progress": "About to enter search text"
-    }},
-    "action": {{
-        "tool": "executor",
-        "input": {{
-            "action": "type 'javascript' into 'search input'"
-        }},
-        "reason": "Entering the search query into the focused search input"
-    }}
-}}
-
-Example Response (after typing, when using suggestion):
-{{
-    "thought": {{
-        "previous_actions": "Clicked search input and typed 'javascript'",
-        "current_state": "Search suggestions are visible below the search input",
-        "next_step": "Click on the first search suggestion",
-        "goal_progress": "About to complete search by clicking suggestion"
-    }},
-    "action": {{
-        "tool": "executor",
-        "input": {{
-            "action": "click on 'first search suggestion'"
-        }},
-        "reason": "Must click a suggestion to complete the search goal"
+        "reason": "Must press Enter to submit the search query"
     }}
 }}
 
@@ -274,15 +223,15 @@ Guidelines:
 - ALWAYS click on the input element directly before typing
 - NEVER click on form elements - always click the specific input element
 - When clicking for typing, target input[type="text"], input[type="search"], or textarea elements
-- For search suggestions, wait for them to appear after typing before clicking
-- NEVER mark a search goal as complete after just typing - MUST press Enter or click a suggestion
-- For any search goal, the sequence MUST be: click input → type text → (press Enter OR click suggestion)
+- NEVER mark a search goal as complete after just typing - MUST press Enter
+- For any search goal, the sequence MUST be: click input → type text → press Enter
+- ALWAYS press Enter to submit searches, NEVER click on search suggestions
 - Be specific in element descriptions
 - Always explain your reasoning in the thought fields
 - When scrolling to bottom, stop if screenshot shows no new content
 - Compare each screenshot with the previous one to detect bottom of page
 
-Example Response (when searching with Enter key):
+Example Response (when searching):
 {{
     "thought": {{
         "previous_actions": "Clicked search input and typed query",
@@ -295,24 +244,7 @@ Example Response (when searching with Enter key):
         "input": {{
             "action": "keypress Enter"
         }},
-        "reason": "Must submit the search by pressing Enter to complete the search goal"
-    }}
-}}
-
-Example Response (when searching with suggestion click):
-{{
-    "thought": {{
-        "previous_actions": "Clicked search input and typed query",
-        "current_state": "Search suggestions are visible below input",
-        "next_step": "Click the relevant search suggestion",
-        "goal_progress": "Must click suggestion to complete goal"
-    }},
-    "action": {{
-        "tool": "executor",
-        "input": {{
-            "action": "click on 'first search suggestion'"
-        }},
-        "reason": "Must click a suggestion to complete the search goal"
+        "reason": "Must press Enter to submit the search query"
     }}
 }}
 
