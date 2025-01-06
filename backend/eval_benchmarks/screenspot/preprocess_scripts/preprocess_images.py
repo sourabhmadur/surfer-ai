@@ -105,29 +105,35 @@ def preprocess_images(input_dir: str, output_dir: str, grid_size: int = 100, res
                 print(f"Error processing {filename}: {str(e)}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Preprocess images with grid lines and optional resizing')
-    parser.add_argument('--input-dir', type=str, default='screenspot_imgs',
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Preprocess images by adding grid lines')
+    parser.add_argument('--input-dir', type=str, default='screenspot_images/screenspot_imgs',
                         help='Directory containing input images')
-    parser.add_argument('--output-dir', type=str, default='screenspot_imgs_grid',
+    parser.add_argument('--output-dir', type=str, default='screenspot_images/screenspot_imgs_grid',
                         help='Directory to save processed images')
-    parser.add_argument('--grid-size', type=int, default=100,
-                        help='Size of grid cells in pixels')
-    parser.add_argument('--resize', action='store_true',
-                        help='Whether to resize images to 1440x990')
-    
+    parser.add_argument('--grid-spacing', type=int, default=100,
+                        help='Spacing between grid lines in pixels')
+    parser.add_argument('--tile-size', type=int, default=784,
+                        help='Size of tiles to generate')
     args = parser.parse_args()
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir = os.path.join(current_dir, args.input_dir)
-    
-    if args.resize:
-        output_dir = os.path.join(current_dir, 'screenspot_imgs_grid_resize')
-        resize_dims = (1440, 990)
-    else:
+    try:
+        # Get the parent directory (screenspot)
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Set up input and output directories
+        input_dir = os.path.join(current_dir, args.input_dir)
         output_dir = os.path.join(current_dir, args.output_dir)
-        resize_dims = None
-    
-    preprocess_images(input_dir, output_dir, args.grid_size, resize_dims)
+        resize_output_dir = os.path.join(current_dir, 'screenspot_images/screenspot_imgs_grid_resize')
+        
+        if args.resize:
+            resize_dims = (1440, 990)
+        else:
+            resize_dims = None
+        
+        preprocess_images(input_dir, output_dir, args.grid_size, resize_dims)
+    except Exception as e:
+        print(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main() 

@@ -416,7 +416,7 @@ async def main():
 NUM_SAMPLES = 10
 MODEL = "gemini-2.0-flash-thinking-exp-1219"
 USE_TILES = False  # Set to True to use tiled images
-IMGS_DIR = "screenspot_imgs_axes"  # Directory with grid-overlayed images
+IMGS_DIR = "screenspot_images/screenspot_imgs_axes"  # Directory with grid-overlayed images
 RUN_NAME = MODEL + "_" + ("tiles" if USE_TILES else "full") + "_" + str(NUM_SAMPLES)
 
 if __name__ == "__main__":

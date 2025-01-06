@@ -10,7 +10,7 @@ class TestScreenSpotEvaluator(unittest.TestCase):
         self.test_dir = os.path.dirname(os.path.abspath(__file__))
         self.evaluator = ScreenSpotEvaluator(
             data_path=os.path.join(self.test_dir, "screenspot_web.json"),
-            images_dir=os.path.join(self.test_dir, "screenspot_imgs")
+            images_dir=os.path.join(self.test_dir, "screenspot_images/screenspot_imgs")
         )
         
         # Mock dataset for testing

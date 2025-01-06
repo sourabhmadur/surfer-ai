@@ -130,8 +130,8 @@ if __name__ == "__main__":
         current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         # Example usage
-        input_dir = os.path.join(current_dir, "screenspot_imgs")
-        output_dir = os.path.join(current_dir, "screenspot_imgs_axes")
+        input_dir = os.path.join(current_dir, "screenspot_images/screenspot_imgs")
+        output_dir = os.path.join(current_dir, "screenspot_images/screenspot_imgs_axes")
         
         print(f"Input directory: {input_dir}")
         print(f"Output directory: {output_dir}")
