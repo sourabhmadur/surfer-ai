@@ -4,6 +4,7 @@ import re
 from typing import Dict, Any
 from models.base import BrowserState
 from tools.element_identifier import ElementIdentifier
+from tools.user_details_fetcher import UserDetailsFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -11,86 +12,80 @@ class ActionHandler:
     """Handles execution of browser actions."""
     def __init__(self, element_identifier: ElementIdentifier):
         self.element_identifier = element_identifier
+        self.user_details_fetcher = UserDetailsFetcher()
 
     def handle_action(self, action: str, state: BrowserState) -> Dict[str, Any]:
         """Handle different types of actions."""
         try:
-            action = action.lower()
-            logger.info(f"=== Executing Action === {action}")
+            # Parse action JSON if it's a string
+            if isinstance(action, str):
+                try:
+                    import json
+                    action_data = json.loads(action)
+                    if isinstance(action_data, dict) and "action" in action_data:
+                        action = action_data
+                except json.JSONDecodeError:
+                    pass
 
-            if action == "complete":
-                return self._handle_complete(action)
-            
-            handlers = {
-                "type": self._handle_type,
-                "click": self._handle_click,
-                "scroll": self._handle_scroll
-            }
+            # Handle action object format
+            if isinstance(action, dict) and "action" in action:
+                action_type = action["action"].lower()
+                logger.info(f"=== Executing Action === {action_type}")
 
-            for action_type, handler in handlers.items():
-                if action.startswith(action_type):
-                    return handler(action, state)
+                if action_type == "complete":
+                    return self._handle_complete(action)
+
+                handlers = {
+                    "type": self._handle_type,
+                    "click": self._handle_click,
+                    "scroll": self._handle_scroll,
+                    "keypress": self._handle_keypress,
+                    "fetch_user_details": self._handle_fetch_user_details
+                }
+
+                if action_type in handlers:
+                    return handlers[action_type](action, state)
 
             return self._handle_invalid_action(action)
         except Exception as e:
             return self._handle_error(str(e))
 
-    def _handle_type(self, action: str, state: BrowserState) -> Dict[str, Any]:
+    def _handle_type(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
         """Handle type actions."""
         try:
-            # Extract text and target element description
-            match = re.match(r'type\s+([^"]+?)(?:\s+into\s+(.+))?$', action)
-            if not match:
-                return self._handle_invalid_action(action)
+            # Validate required fields
+            if "text" not in action:
+                return self._handle_error("Missing required field 'text' for type action")
 
-            # Clean the text by removing quotes
-            text_to_type = match.group(1).strip("'\"")
-            element_desc = match.group(2)
+            text_to_type = action["text"]
 
-            # If element description is provided, identify the element
-            if element_desc:
-                element_result = self.element_identifier.identify_element(element_desc, state.page_state["html"])
-                if not element_result["success"]:
-                    return self._handle_error(element_result["error"])
-                
-                element_data = element_result["element_data"]
-                return {
-                    "success": True,
-                    "type": "action",
-                    "result": {
-                        "action": "type",
-                        "text": text_to_type,
-                        "element_data": {
-                            "selector": element_data["selector"],
-                            "element_type": element_data["element_type"],
-                            "text_content": element_data["text_content"]
-                        }
-                    }
+            # Direct typing without element identification
+            return {
+                "success": True,
+                "type": "action",
+                "result": {
+                    "action": "type",
+                    "text": text_to_type
                 }
-            else:
-                # Direct typing without element identification
-                return {
-                    "success": True,
-                    "type": "action",
-                    "result": {
-                        "action": "type",
-                        "text": text_to_type
-                    }
-                }
+            }
         except Exception as e:
             return self._handle_error(f"Error handling type action: {str(e)}")
 
-    def _handle_click(self, action: str, state: BrowserState) -> Dict[str, Any]:
+    def _handle_click(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
         """Handle click actions."""
         try:
-            # Extract element description
-            match = re.match(r'click\s+(?:on\s+)?(.+)$', action)
-            if not match:
-                return self._handle_invalid_action(action)
+            # Validate required fields
+            if "coordinates" not in action:
+                return self._handle_error("Missing required field 'coordinates' for click action")
+            if "element_description" not in action:
+                return self._handle_error("Missing required field 'element_description' for click action")
+            if "x" not in action["coordinates"] or "y" not in action["coordinates"]:
+                return self._handle_error("Missing x or y coordinates for click action")
 
-            element_desc = match.group(1)
+            coordinates = action["coordinates"]
+            element_desc = action["element_description"]
             
-            # Identify the element
+            # Identify the element for additional context
             element_result = self.element_identifier.identify_element(element_desc, state.page_state["html"])
             if not element_result["success"]:
                 return self._handle_error(element_result["error"])
@@ -101,6 +96,10 @@ class ActionHandler:
                 "type": "action",
                 "result": {
                     "action": "click",
+                    "coordinates": {
+                        "x": coordinates["x"],
+                        "y": coordinates["y"]
+                    },
                     "element_data": {
                         "selector": element_data["selector"],
                         "element_type": element_data["element_type"],
@@ -111,16 +110,20 @@ class ActionHandler:
         except Exception as e:
             return self._handle_error(f"Error handling click action: {str(e)}")
 
-    def _handle_scroll(self, action: str, state: BrowserState) -> Dict[str, Any]:
+    def _handle_scroll(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
         """Handle scroll actions."""
         try:
-            # Extract direction and pixels
-            match = re.match(r'scroll\s+(up|down)\s+by\s+(\d+)\s+pixels?', action)
-            if not match:
-                return self._handle_invalid_action(action)
+            # Validate required fields
+            if "direction" not in action:
+                return self._handle_error("Missing required field 'direction' for scroll action")
+            if "pixels" not in action:
+                return self._handle_error("Missing required field 'pixels' for scroll action")
 
-            direction = match.group(1)
-            pixels = int(match.group(2))
+            direction = action["direction"].lower()
+            pixels = int(action["pixels"])
+
+            if direction not in ["up", "down"]:
+                return self._handle_error(f"Invalid scroll direction: {direction}. Must be 'up' or 'down'")
 
             return {
                 "success": True,
@@ -134,6 +137,49 @@ class ActionHandler:
         except Exception as e:
             return self._handle_error(f"Error handling scroll action: {str(e)}")
 
+    def _handle_keypress(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
+        """Handle keypress actions."""
+        try:
+            # Validate required fields
+            if "key" not in action:
+                return self._handle_error("Missing required field 'key' for keypress action")
+
+            key = action["key"].lower()
+            valid_keys = ["enter", "tab", "escape"]
+            
+            if key not in valid_keys:
+                return self._handle_error(f"Invalid key: {key}. Valid keys are: {', '.join(valid_keys)}")
+
+            return {
+                "success": True,
+                "type": "action",
+                "result": {
+                    "action": "keypress",
+                    "key": key
+                }
+            }
+        except Exception as e:
+            return self._handle_error(f"Error handling keypress action: {str(e)}")
+
+    def _handle_fetch_user_details(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
+        """Handle fetch user details action."""
+        try:
+            result = self.user_details_fetcher.fetch_details()
+
+            if not result["success"]:
+                return self._handle_error(result["error"])
+
+            return {
+                "success": True,
+                "type": "action",
+                "result": {
+                    "action": "fetch_user_details",
+                    "user_details": result["data"]
+                }
+            }
+        except Exception as e:
+            return self._handle_error(f"Error handling fetch user details action: {str(e)}")
+
     @staticmethod
     def _handle_complete(action: Dict[str, Any]) -> Dict[str, Any]:
         """Handle task completion."""
@@ -145,13 +191,15 @@ class ActionHandler:
         }
 
     @staticmethod
-    def _handle_invalid_action(action: str) -> Dict[str, Any]:
+    def _handle_invalid_action(action: Any) -> Dict[str, Any]:
         """Handle invalid actions."""
-        error_msg = f"Invalid action format: {action}. Supported formats:\n" + \
-                   "1. 'click on [element description]'\n" + \
-                   "2. 'scroll [up|down] by [number] pixels'\n" + \
-                   "3. 'type [text]' or 'type [text] into [element description]'\n" + \
-                   "4. 'complete' (when task is finished)"
+        error_msg = f"Invalid action format: {action}. Action must be a dictionary with required fields based on action type:\n" + \
+                   "1. Click: action='click', coordinates={x,y}, element_description\n" + \
+                   "2. Type: action='type', text\n" + \
+                   "3. Scroll: action='scroll', direction='up/down', pixels\n" + \
+                   "4. Keypress: action='keypress', key='Enter/Tab/Escape'\n" + \
+                   "5. Fetch User Details: action='fetch_user_details'\n" + \
+                   "6. Complete: action='complete'"
         return {
             "success": False,
             "type": "error",

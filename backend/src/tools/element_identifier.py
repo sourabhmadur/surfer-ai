@@ -19,7 +19,8 @@ class ElementIdentifier:
         
         try:
             # Preprocess HTML
-            cleaned_html = self._preprocess_html(html)
+            cleaned_html = html 
+            # cleaned_html = self._preprocess_html(cleaned_html)
             
             # Get LLM response
             response = self._get_llm_response(element_desc, cleaned_html)

@@ -4,6 +4,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 import logging
 from workflow import Agent, create_initial_state
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,29 @@ class WebSocketHandler:
             return
 
         if result["type"] == "action":
+            # Get the action type from the result
+            action_type = result.get("result", {}).get("action")
+            logger.info(f"Processing action of type: {action_type}")
+
+            if action_type == "fetch_user_details":
+                # For fetch_user_details, we don't need to send to frontend
+                # Just add the user details to the state and conversation
+                if "user_details" in result["result"]:
+                    user_details = result["result"]["user_details"]
+                    
+                    # Add user details to LLM conversation
+                    user_details_message = {
+                        "role": "assistant",
+                        "content": f"I've fetched the user details. Here's the available information:\n{json.dumps(user_details, indent=2)}\nI'll use this information to fill out the form fields."
+                    }
+                    self.state.llm_conversation.append(user_details_message)
+                    
+                    # Continue agent execution
+                    next_result = await self._execute_agent()
+                    await self._handle_agent_result(next_result)
+                    return
+
+            # For other actions, send to frontend
             await self._send_action(result)
         elif result["type"] == "complete":
             await self._send_completion(result)

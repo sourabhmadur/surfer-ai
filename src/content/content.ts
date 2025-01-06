@@ -214,6 +214,15 @@
               // Regular click for non-submit elements
               (element as HTMLElement).click();
             }
+
+            // Focus the element after clicking
+            if (element instanceof HTMLElement) {
+              element.focus();
+              logger.log('Element focused after click', {
+                tagName: element.tagName,
+                type: element instanceof HTMLInputElement ? element.type : 'not input'
+              });
+            }
             
             element.style.outline = originalOutline;
             indicator.remove();
@@ -221,6 +230,7 @@
               success: true,
               details: {
                 clicked: true,
+                focused: true,
                 selector,
                 element_type,
                 text_content

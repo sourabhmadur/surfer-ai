@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from prompts import SYSTEM_PROMPT, USER_PROMPT
 from llm import LLMProvider
 from tools.element_identifier import ElementIdentifier
+from tools.screenshot_element_identifier import ScreenshotElementIdentifier
 from tools.action_handler import ActionHandler
 from models.base import Message, BrowserState
 
@@ -31,7 +32,8 @@ class Agent:
     def __init__(self):
         self.llm = LLMProvider.get_llm()
         self.element_identifier = ElementIdentifier(self.llm)
-        self.action_handler = ActionHandler(self.element_identifier)
+        self.screenshot_element_identifier = ScreenshotElementIdentifier(self.llm)
+        self.action_handler = ActionHandler(self.element_identifier, self.screenshot_element_identifier)
         self.max_iterations = 5
 
     def think(self, state: BrowserState) -> Dict[str, Any]:
