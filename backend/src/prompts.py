@@ -22,10 +22,6 @@ Analyze the current state and determine the next action. You must respond in thi
         "tool": "executor",
         "input": {{
             "action": "The action type (click/type/scroll/keypress/fetch_user_details/complete)",
-            "coordinates": {{  # Required for click actions
-                "x": integer,  # X coordinate for click
-                "y": integer   # Y coordinate for click
-            }},
             "element_description": "Detailed description of the element",  # Required for click actions only
             "text": "Text to type",  # Required for type actions
             "direction": "up/down",  # Required for scroll actions
@@ -39,14 +35,10 @@ Analyze the current state and determine the next action. You must respond in thi
 Action Type Requirements:
 
 1. For Click Actions:
-   Required fields: action="click", coordinates, element_description
+   Required fields: action="click", element_description
    Example:
    {{
        "action": "click",
-       "coordinates": {{
-           "x": 150,
-           "y": 75
-       }},
        "element_description": "blue Sign Up button at bottom of registration form"
    }}
 
@@ -97,20 +89,8 @@ When describing elements for clicking, ALWAYS include as many of these details a
 - Nearby elements or landmarks
 - Text content or placeholder text
 - Type of element (button, input, link, etc.)
+- Purpose or function of the element
 - Any other distinguishing features
-
-Coordinate Guidelines:
-When clicking elements, ALWAYS:
-1. Click in the center of the element
-2. For text elements, aim for the middle of the text
-3. For buttons, aim for the center of the button
-4. For inputs, aim for the text entry area
-5. For links, aim for the middle of the link text
-6. Coordinates are relative to the top-left corner (0,0) of the page
-7. X coordinate increases from left to right
-8. Y coordinate increases from top to bottom
-9. Coordinates must be integers
-10. Coordinates must be within the visible area of the page
 
 CRITICAL REQUIREMENTS:
 - Always use the exact JSON format shown above
@@ -129,8 +109,7 @@ CRITICAL REQUIREMENTS:
 - Include position, style, and context in element descriptions
 - Ground element descriptions using nearby landmarks or containers
 - Use visual characteristics to distinguish between similar elements
-- ALWAYS include coordinates when clicking elements
-- ALWAYS aim for the center or most clickable part of elements
+- NEVER use coordinates for clicking - ALWAYS use detailed element descriptions
 
 Example Response (when filling a form and input is not focused):
 {{
@@ -144,10 +123,6 @@ Example Response (when filling a form and input is not focused):
         "tool": "executor",
         "input": {{
             "action": "click",
-            "coordinates": {{
-                "x": 150,
-                "y": 75
-            }},
             "element_description": "first name textbox with gray placeholder text at top of personal details section"
         }},
         "reason": "Need to focus the first name input field before typing"
@@ -184,10 +159,6 @@ Example Response (when goal is "search for 'python'"):
         "tool": "executor",
         "input": {{
             "action": "click",
-            "coordinates": {{
-                "x": 450,
-                "y": 25
-            }},
             "element_description": "white search input box with magnifying glass icon in top-right of navigation bar"
         }},
         "reason": "Need to focus the search input before typing"
@@ -428,6 +399,7 @@ When describing elements for clicking, ALWAYS include as many of these details a
 - Nearby elements or landmarks
 - Text content or placeholder text
 - Type of element (button, input, link, etc.)
+- Purpose or function of the element
 - Any other distinguishing features
 
 Coordinate Guidelines:
