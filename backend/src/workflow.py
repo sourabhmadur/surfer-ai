@@ -230,10 +230,12 @@ class Agent:
             
             # Handle action object format
             if isinstance(action, dict):
-                if "input" in action and "action" in action["input"]:
-                    return self.action_handler.handle_action(action["input"]["action"], state)
-                elif "name" in action and "input" in action:
+                # Handle nested action format from LLM
+                if "input" in action and isinstance(action["input"], dict):
                     return self.action_handler.handle_action(action["input"], state)
+                # Handle direct action format
+                elif "action" in action:
+                    return self.action_handler.handle_action(action, state)
 
             return self._handle_error(f"Invalid action format: {action}")
         except Exception as e:
