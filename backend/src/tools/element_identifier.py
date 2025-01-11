@@ -157,7 +157,11 @@ You MUST respond with a JSON object in this EXACT format:
     "selector": "CSS selector to uniquely identify the element",
     "element_type": "Type of element (e.g., button, link, input)",
     "text_content": "Visible text content of the element",
-    "confidence": "Number between 0 and 1 indicating confidence in the match"
+    "confidence": "Number between 0 and 1 indicating confidence in the match",
+    "coordinates": {{
+        "x": "X coordinate of the element's center",
+        "y": "Y coordinate of the element's center"
+    }}
 }}
 
 Requirements for selector generation:
@@ -175,6 +179,7 @@ Requirements for selector generation:
    - NEVER use complex attribute combinations
    - NEVER use selectors longer than 2 parts
    - ALWAYS match text content when possible
+   - ALWAYS calculate coordinates based on element's position and dimensions
 
 3. For article links:
    - If text or URL is unique, use .titleline a[href*="unique-part"]
@@ -202,7 +207,11 @@ For a specific article:
     "selector": ".titleline a[href*='economist.com']",
     "element_type": "link",
     "text_content": "Why Canada Should Join the EU",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "coordinates": {{
+        "x": 150,
+        "y": 75
+    }}
 }}
 
 For a vote button:
@@ -210,7 +219,11 @@ For a vote button:
     "selector": ".votearrow",
     "element_type": "div",
     "text_content": "upvote",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "coordinates": {{
+        "x": 25,
+        "y": 50
+    }}
 }}
 
 For a navigation link:
@@ -218,7 +231,11 @@ For a navigation link:
     "selector": ".morelink",
     "element_type": "link",
     "text_content": "More",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "coordinates": {{
+        "x": 200,
+        "y": 100
+    }}
 }}
 
 Analyze the HTML and provide the element details in the specified JSON format."""

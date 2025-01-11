@@ -75,14 +75,9 @@ class ActionHandler:
         """Handle click actions."""
         try:
             # Validate required fields
-            if "coordinates" not in action:
-                return self._handle_error("Missing required field 'coordinates' for click action")
             if "element_description" not in action:
                 return self._handle_error("Missing required field 'element_description' for click action")
-            if "x" not in action["coordinates"] or "y" not in action["coordinates"]:
-                return self._handle_error("Missing x or y coordinates for click action")
 
-            coordinates = action["coordinates"]
             element_desc = action["element_description"]
             
             # Identify the element for additional context
@@ -91,15 +86,17 @@ class ActionHandler:
                 return self._handle_error(element_result["error"])
             
             element_data = element_result["element_data"]
+            
+            # Get element coordinates from element data
+            if "coordinates" not in element_data:
+                return self._handle_error("Element identifier did not return coordinates")
+            
             return {
                 "success": True,
                 "type": "action",
                 "result": {
                     "action": "click",
-                    "coordinates": {
-                        "x": coordinates["x"],
-                        "y": coordinates["y"]
-                    },
+                    "coordinates": element_data["coordinates"],
                     "element_data": {
                         "selector": element_data["selector"],
                         "element_type": element_data["element_type"],
@@ -194,7 +191,7 @@ class ActionHandler:
     def _handle_invalid_action(action: Any) -> Dict[str, Any]:
         """Handle invalid actions."""
         error_msg = f"Invalid action format: {action}. Action must be a dictionary with required fields based on action type:\n" + \
-                   "1. Click: action='click', coordinates={x,y}, element_description\n" + \
+                   "1. Click: action='click', element_description\n" + \
                    "2. Type: action='type', text\n" + \
                    "3. Scroll: action='scroll', direction='up/down', pixels\n" + \
                    "4. Keypress: action='keypress', key='Enter/Tab/Escape'\n" + \
