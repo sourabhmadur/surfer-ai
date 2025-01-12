@@ -7,7 +7,7 @@
   debugger;
 
   // Add console group for better visibility
-  console.group('=== Content Script Initialization ===');
+  console.group('=== Content Script Initializationssssszzzz ===');
   console.log('Content Script Loading');
   console.log('URL:', window.location.href);
   console.log('Timestamp:', new Date().toISOString());
@@ -473,6 +473,95 @@
               });
             });
           return true;  // Will respond asynchronously
+        }
+        else if (action.action === 'keypress') {
+          logger.log('Handling keypress action:', action);
+          try {
+            const key = action.key.toLowerCase();
+            const activeElement = document.activeElement || document.body;
+            
+            // Create keyboard events
+            const events = [
+              new KeyboardEvent('keydown', {
+                key: key,
+                code: key === 'enter' ? 'Enter' : `Key${key.toUpperCase()}`,
+                keyCode: key === 'enter' ? 13 : key.charCodeAt(0),
+                which: key === 'enter' ? 13 : key.charCodeAt(0),
+                bubbles: true,
+                cancelable: true,
+                composed: true // Allow the event to cross shadow DOM boundaries
+              }),
+              new KeyboardEvent('keypress', {
+                key: key,
+                code: key === 'enter' ? 'Enter' : `Key${key.toUpperCase()}`,
+                keyCode: key === 'enter' ? 13 : key.charCodeAt(0),
+                which: key === 'enter' ? 13 : key.charCodeAt(0),
+                bubbles: true,
+                cancelable: true,
+                composed: true
+              }),
+              new KeyboardEvent('keyup', {
+                key: key,
+                code: key === 'enter' ? 'Enter' : `Key${key.toUpperCase()}`,
+                keyCode: key === 'enter' ? 13 : key.charCodeAt(0),
+                which: key === 'enter' ? 13 : key.charCodeAt(0),
+                bubbles: true,
+                cancelable: true,
+                composed: true
+              })
+            ];
+
+            // Try to dispatch to both document and active element
+            events.forEach(event => {
+              logger.log('Dispatching keyboard event:', event.type);
+              document.dispatchEvent(event);
+              activeElement.dispatchEvent(event);
+            });
+
+            // If it's an input element and the key is enter, try to submit the form
+            if (key === 'enter' && activeElement instanceof HTMLInputElement) {
+              const form = activeElement.closest('form');
+              if (form) {
+                form.submit();
+              }
+            }
+
+            // Visual feedback
+            const indicator = document.createElement('div');
+            indicator.style.cssText = `
+              position: fixed;
+              top: 20px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: rgba(0, 0, 0, 0.7);
+              color: white;
+              padding: 5px 10px;
+              border-radius: 4px;
+              z-index: 999999;
+              font-family: sans-serif;
+              font-size: 12px;
+            `;
+            indicator.textContent = `Key pressed: ${key}`;
+            document.body.appendChild(indicator);
+            setTimeout(() => indicator.remove(), 1000);
+
+            sendResponse({
+              success: true,
+              details: {
+                key,
+                element: activeElement.tagName.toLowerCase()
+              }
+            });
+          } catch (error) {
+            logger.error('Keypress Error:', error);
+            sendResponse({
+              success: false,
+              details: {
+                error: error instanceof Error ? error.message : 'Failed to execute keypress'
+              }
+            });
+          }
+          return true;
         }
         else {
           sendResponse({
