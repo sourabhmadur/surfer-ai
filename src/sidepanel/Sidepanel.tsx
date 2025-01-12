@@ -345,6 +345,40 @@ export default function Sidepanel() {
                     });
                 }
             }
+            // Handle keypress actions
+            else if (actionData.action === 'keypress') {
+                logger.log('Processing keypress action', actionData);
+                actionMessage = `Pressing key: ${actionData.key}`;
+                
+                try {
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (!tab?.id) {
+                        throw new Error('No active tab found');
+                    }
+
+                    // Send keypress action to background script
+                    const messageToBackground = {
+                        type: 'EXECUTE_ACTION',
+                        action: {
+                            action: 'keypress',
+                            key: actionData.key
+                        },
+                        tabId: tab.id
+                    };
+                    
+                    logger.log('Sending keypress action to background', messageToBackground);
+                    chrome.runtime.sendMessage(messageToBackground, (response) => {
+                        logger.log('Background response (keypress)', response);
+                        handleActionResult(response);
+                    });
+                } catch (error) {
+                    logger.error('Failed to execute keypress action', error);
+                    handleActionResult({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Failed to execute keypress action'
+                    });
+                }
+            }
             else {
                 logger.error('Unknown action:', actionData);
                 handleActionResult({

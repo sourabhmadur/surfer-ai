@@ -53,12 +53,14 @@ class WebSocketHandler:
                             k: '[SKIPPED]' if k in ['html', 'screenshot'] else v
                             for k, v in value.items()
                         }
-                    elif key not in ['html', 'screenshot']:
+                    elif key in ['html', 'screenshot', 'page_state']:
+                        log_message[key] = '[REDACTED]'
+                    else:
                         log_message[key] = value
 
             logger.debug("\n=== Message Received ===")
             logger.debug(f"Message type: {type(message)}")
-            logger.debug(f"Message content: {log_message}")
+            logger.debug(f"Message content (sensitive data redacted): {log_message}")
             logger.debug(f"Message keys: {message.keys() if isinstance(message, dict) else 'Not a dict'}")
             logger.debug("=== End Message ===\n")
             
@@ -223,6 +225,8 @@ class WebSocketHandler:
 
     async def _handle_agent_result(self, result: Dict[str, Any]):
         """Handle agent execution result."""
+        logger.info(f"Handling agent result: {result}")
+        
         if not result.get("success", False):
             await self._send_error(result.get("error", "Unknown error occurred"))
             self._reset_state()
@@ -253,6 +257,28 @@ class WebSocketHandler:
 
             # For other actions, send to frontend
             await self._send_action(result)
+            
+            # Wait for response from frontend
+            try:
+                response = await self.websocket.receive_json()
+                # Clean response before logging
+                clean_response = self._clean_data_for_logging(response)
+                logger.info(f"Received response from frontend: {clean_response}")
+                
+                if not response.get("success", False):
+                    error_msg = response.get("details", {}).get("error", "Unknown error occurred")
+                    await self._send_error(f"Action failed: {error_msg}")
+                    return
+                
+                # Continue agent execution on success
+                next_result = await self._execute_agent()
+                await self._handle_agent_result(next_result)
+                
+            except Exception as e:
+                logger.error(f"Error receiving response from frontend: {str(e)}")
+                await self._send_error(f"Failed to get response from frontend: {str(e)}")
+                return
+                
         elif result["type"] == "complete":
             await self._send_completion(result)
         else:
@@ -261,6 +287,7 @@ class WebSocketHandler:
 
     async def _send_action(self, result: Dict[str, Any]):
         """Send action message to client."""
+        logger.info(f"Sending action to client: {result}")
         await self.websocket.send_json({
             "type": "action",
             "data": result.get("result", {})
@@ -353,3 +380,18 @@ class WebSocketHandler:
             "type": "error",
             "error": error_message
         }) 
+
+    def _clean_data_for_logging(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean sensitive data before logging."""
+        if not isinstance(data, dict):
+            return data
+            
+        clean_data = {}
+        for key, value in data.items():
+            if isinstance(value, dict):
+                clean_data[key] = self._clean_data_for_logging(value)
+            elif key in ['html', 'screenshot', 'page_state']:
+                clean_data[key] = '[REDACTED]'
+            else:
+                clean_data[key] = value
+        return clean_data 

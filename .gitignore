@@ -96,9 +96,11 @@ coverage.xml
 cover/
 
 # ScreenSpot image directories
-screenspot_img*/
-**/screenspot_img*/
-grid_preprocessed_images/
-**/grid_preprocessed_images/
+screenspot_images/
+**/screenspot_images/
 runs/
 **/runs/
+
+# Logs
+logs/
+*.log

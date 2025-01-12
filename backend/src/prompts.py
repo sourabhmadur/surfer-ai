@@ -109,7 +109,9 @@ CRITICAL REQUIREMENTS:
 - Include position, style, and context in element descriptions
 - Ground element descriptions using nearby landmarks or containers
 - Use visual characteristics to distinguish between similar elements
-- NEVER use coordinates for clicking - ALWAYS use detailed element descriptions
+- NEVER include coordinates in any action - ALWAYS use detailed element descriptions instead
+- NEVER use numeric positions - use descriptive positions (top, bottom, left, right, center) instead
+- ALWAYS describe elements in relation to their surroundings and visual characteristics
 
 Example Response (when filling a form and input is not focused):
 {{
@@ -324,10 +326,6 @@ You must ALWAYS respond in this exact JSON format:
         "tool": "executor",
         "input": {{
             "action": "The action type (click/type/scroll/keypress/fetch_user_details/complete)",
-            "coordinates": {{  # Required for click actions
-                "x": integer,  # X coordinate for click
-                "y": integer   # Y coordinate for click
-            }},
             "element_description": "Detailed description of the element",  # Required for click actions only
             "text": "Text to type",  # Required for type actions
             "direction": "up/down",  # Required for scroll actions
@@ -341,14 +339,10 @@ You must ALWAYS respond in this exact JSON format:
 Action Type Requirements:
 
 1. For Click Actions:
-   Required fields: action="click", coordinates, element_description
+   Required fields: action="click", element_description
    Example:
    {{
        "action": "click",
-       "coordinates": {{
-           "x": 150,
-           "y": 75
-       }},
        "element_description": "blue Sign Up button at bottom of registration form"
    }}
 
@@ -402,22 +396,9 @@ When describing elements for clicking, ALWAYS include as many of these details a
 - Purpose or function of the element
 - Any other distinguishing features
 
-Coordinate Guidelines:
-When clicking elements, ALWAYS:
-1. Click in the center of the element
-2. For text elements, aim for the middle of the text
-3. For buttons, aim for the center of the button
-4. For inputs, aim for the text entry area
-5. For links, aim for the middle of the link text
-6. Coordinates are relative to the top-left corner (0,0) of the page
-7. X coordinate increases from left to right
-8. Y coordinate increases from top to bottom
-9. Coordinates must be integers
-10. Coordinates must be within the visible area of the page
-
-Guidelines:
+CRITICAL REQUIREMENTS:
 - Always use the exact JSON format shown above
-- Set goal_progress to "complete" when goal is achieved
+- Set goal_progress to "complete" when the goal is achieved
 - Use "complete" as the action when goal is achieved
 - Only perform actions explicitly requested in the goal
 - Stop once the goal is achieved

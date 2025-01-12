@@ -4,12 +4,40 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocketDisconnect
 from websocket_handler import WebSocketHandler
 import logging
-from config import setup_logging
+import os
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 
+# Create logs directory if it doesn't exist
+log_dir = Path(__file__).parent.parent / "logs"
+log_dir.mkdir(exist_ok=True)
+
 # Configure logging
-setup_logging()
+log_file = log_dir / f"surfer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+# Create a formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Create and configure the file handler
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(formatter)
+file_handler.setLevel(logging.INFO)
+
+# Create and configure the stream handler
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+stream_handler.setLevel(logging.INFO)
+
+# Configure the root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(stream_handler)
+
+# Get logger for this module
 logger = logging.getLogger(__name__)
+logger.info(f"Logging to file: {log_file}")
 
 # Set higher log levels for noisy libraries
 logging.getLogger("uvicorn").setLevel(logging.WARNING)

@@ -19,8 +19,8 @@ class ElementIdentifier:
         
         try:
             # Preprocess HTML
-            cleaned_html = html 
-            # cleaned_html = self._preprocess_html(cleaned_html)
+            # cleaned_html = html 
+            cleaned_html = self._preprocess_html(html)
             
             # Get LLM response
             response = self._get_llm_response(element_desc, cleaned_html)
@@ -61,7 +61,6 @@ class ElementIdentifier:
             # Remove comments
             for comment in soup.find_all(text=lambda text: isinstance(text, str) and text.strip().startswith('//')):
                 comment.extract()
-            
             
             # Remove empty elements that don't contribute to structure
             for element in soup.find_all():
@@ -141,6 +140,39 @@ class ElementIdentifier:
             logger.error("No selector returned by LLM")
         elif 'http' in element_data['selector'].lower():
             logger.warning("Selector contains URL - this might be fragile")
+            
+        # Add default coordinates if missing
+        if 'coordinates' not in element_data:
+            logger.warning("No coordinates returned by LLM, using default center coordinates")
+            element_data['coordinates'] = {
+                'x': 100,  # Default x coordinate
+                'y': 100   # Default y coordinate
+            }
+        elif not isinstance(element_data['coordinates'], dict):
+            logger.warning("Invalid coordinates format, using default center coordinates")
+            element_data['coordinates'] = {
+                'x': 100,  # Default x coordinate
+                'y': 100   # Default y coordinate
+            }
+        elif not all(k in element_data['coordinates'] for k in ['x', 'y']):
+            logger.warning("Missing x or y in coordinates, using default center coordinates")
+            element_data['coordinates'] = {
+                'x': 100,  # Default x coordinate
+                'y': 100   # Default y coordinate
+            }
+            
+        # Convert coordinate values to integers if they're strings
+        if isinstance(element_data['coordinates']['x'], str):
+            try:
+                element_data['coordinates']['x'] = int(element_data['coordinates']['x'])
+            except ValueError:
+                element_data['coordinates']['x'] = 100  # Default if conversion fails
+                
+        if isinstance(element_data['coordinates']['y'], str):
+            try:
+                element_data['coordinates']['y'] = int(element_data['coordinates']['y'])
+            except ValueError:
+                element_data['coordinates']['y'] = 100  # Default if conversion fails
 
     @staticmethod
     def _build_prompt(element_desc: str, html: str) -> str:
@@ -157,11 +189,7 @@ You MUST respond with a JSON object in this EXACT format:
     "selector": "CSS selector to uniquely identify the element",
     "element_type": "Type of element (e.g., button, link, input)",
     "text_content": "Visible text content of the element",
-    "confidence": "Number between 0 and 1 indicating confidence in the match",
-    "coordinates": {{
-        "x": "X coordinate of the element's center",
-        "y": "Y coordinate of the element's center"
-    }}
+    "confidence": "Number between 0 and 1 indicating confidence in the match"
 }}
 
 Requirements for selector generation:
@@ -179,7 +207,6 @@ Requirements for selector generation:
    - NEVER use complex attribute combinations
    - NEVER use selectors longer than 2 parts
    - ALWAYS match text content when possible
-   - ALWAYS calculate coordinates based on element's position and dimensions
 
 3. For article links:
    - If text or URL is unique, use .titleline a[href*="unique-part"]
@@ -207,11 +234,7 @@ For a specific article:
     "selector": ".titleline a[href*='economist.com']",
     "element_type": "link",
     "text_content": "Why Canada Should Join the EU",
-    "confidence": 0.95,
-    "coordinates": {{
-        "x": 150,
-        "y": 75
-    }}
+    "confidence": 0.95
 }}
 
 For a vote button:
@@ -219,11 +242,7 @@ For a vote button:
     "selector": ".votearrow",
     "element_type": "div",
     "text_content": "upvote",
-    "confidence": 0.95,
-    "coordinates": {{
-        "x": 25,
-        "y": 50
-    }}
+    "confidence": 0.95
 }}
 
 For a navigation link:
@@ -231,11 +250,7 @@ For a navigation link:
     "selector": ".morelink",
     "element_type": "link",
     "text_content": "More",
-    "confidence": 0.95,
-    "coordinates": {{
-        "x": 200,
-        "y": 100
-    }}
+    "confidence": 0.95
 }}
 
 Analyze the HTML and provide the element details in the specified JSON format."""
