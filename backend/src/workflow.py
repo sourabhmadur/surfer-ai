@@ -99,7 +99,22 @@ class Agent:
                 if json_match:
                     content = json_match.group(1)
                 
-                parsed_response = json.loads(content)
+                # Clean up common JSON formatting issues
+                content = re.sub(r',(\s*[}\]])', r'\1', content)  # Remove trailing commas before closing brackets
+                content = re.sub(r',\s*\n\s*([}\]])', r'\1', content)  # Remove trailing commas with newlines
+                content = re.sub(r'\n\s*([}\]])', r'\1', content)  # Remove extra newlines before closing brackets
+                content = content.strip()  # Remove extra whitespace
+                
+                try:
+                    parsed_response = json.loads(content)
+                except json.JSONDecodeError:
+                    # If still fails, try more aggressive cleanup
+                    content = re.sub(r',(\s*[}\]])', r'\1', content)  # More aggressive trailing comma removal
+                    content = re.sub(r'[\t\n\r]', '', content)  # Remove all whitespace
+                    content = re.sub(r',}', '}', content)  # Remove any remaining trailing commas
+                    content = re.sub(r',]', ']', content)  # Remove any remaining trailing commas in arrays
+                    parsed_response = json.loads(content)
+                
                 logger.info(f"LLM Response: {parsed_response}")
 
                 # Add assistant's response to conversation history
@@ -161,40 +176,38 @@ class Agent:
     def _validate_llm_response(self, response: Dict[str, Any]) -> bool:
         """Validate the schema of LLM response."""
         try:
-            required_fields = {
-                "thought": {
-                    "previous_actions": str,
-                    "current_state": str,
-                    "next_step": str,
-                    "goal_progress": str
-                },
-                "action": {
-                    "tool": str,
-                    "input": dict,
-                    "reason": str
-                }
-            }
-
             # Check top-level fields
-            if not all(field in response for field in required_fields):
-                logger.error(f"Missing top-level fields. Required: {list(required_fields.keys())}, Got: {list(response.keys())}")
+            if not isinstance(response, dict):
+                logger.error("Response is not a dictionary")
                 return False
 
-            # Check thought structure
+            if "thought" not in response or "action" not in response:
+                logger.error(f"Missing required top-level fields. Got: {list(response.keys())}")
+                return False
+
+            # Check thought structure - only validate it has required fields
             thought = response.get("thought", {})
-            thought_fields = required_fields["thought"]
-            if not all(field in thought and isinstance(thought[field], field_type) 
-                      for field, field_type in thought_fields.items()):
-                logger.error(f"Invalid thought structure. Required: {thought_fields}, Got: {thought}")
+            required_thought_fields = {"previous_actions", "current_state", "next_step", "goal_progress"}
+            
+            if not all(field in thought for field in required_thought_fields):
+                logger.error(f"Missing thought fields. Required: {required_thought_fields}, Got: {list(thought.keys())}")
                 return False
 
-            # Check action structure
+            # Check action structure - be more lenient
             action = response.get("action", {})
-            action_fields = required_fields["action"]
-            if not all(field in action and isinstance(action[field], field_type) 
-                      for field, field_type in action_fields.items()):
-                logger.error(f"Invalid action structure. Required: {action_fields}, Got: {action}")
+            if not isinstance(action, dict):
+                logger.error("Action is not a dictionary")
                 return False
+
+            # For executor tool, validate input structure
+            if action.get("tool") == "executor":
+                if "input" not in action or not isinstance(action["input"], dict):
+                    logger.error("Missing or invalid input field for executor tool")
+                    return False
+                
+                if "action" not in action["input"]:
+                    logger.error("Missing action field in executor input")
+                    return False
 
             return True
         except Exception as e:
