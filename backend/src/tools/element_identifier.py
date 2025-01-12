@@ -140,39 +140,6 @@ class ElementIdentifier:
             logger.error("No selector returned by LLM")
         elif 'http' in element_data['selector'].lower():
             logger.warning("Selector contains URL - this might be fragile")
-            
-        # Add default coordinates if missing
-        if 'coordinates' not in element_data:
-            logger.warning("No coordinates returned by LLM, using default center coordinates")
-            element_data['coordinates'] = {
-                'x': 100,  # Default x coordinate
-                'y': 100   # Default y coordinate
-            }
-        elif not isinstance(element_data['coordinates'], dict):
-            logger.warning("Invalid coordinates format, using default center coordinates")
-            element_data['coordinates'] = {
-                'x': 100,  # Default x coordinate
-                'y': 100   # Default y coordinate
-            }
-        elif not all(k in element_data['coordinates'] for k in ['x', 'y']):
-            logger.warning("Missing x or y in coordinates, using default center coordinates")
-            element_data['coordinates'] = {
-                'x': 100,  # Default x coordinate
-                'y': 100   # Default y coordinate
-            }
-            
-        # Convert coordinate values to integers if they're strings
-        if isinstance(element_data['coordinates']['x'], str):
-            try:
-                element_data['coordinates']['x'] = int(element_data['coordinates']['x'])
-            except ValueError:
-                element_data['coordinates']['x'] = 100  # Default if conversion fails
-                
-        if isinstance(element_data['coordinates']['y'], str):
-            try:
-                element_data['coordinates']['y'] = int(element_data['coordinates']['y'])
-            except ValueError:
-                element_data['coordinates']['y'] = 100  # Default if conversion fails
 
     @staticmethod
     def _build_prompt(element_desc: str, html: str) -> str:

@@ -75,7 +75,7 @@ class Agent:
                     "content": [
                         {
                             "type": "text",
-                            "text": "Compare this screenshot with the previous ones to make your decision. "
+                            "text": f"Previous actions taken: {state.last_action_result['result'] if state.last_action_result else 'No actions taken yet'}. Compare this screenshot with the previous ones to make your decision."
                         },
                         {
                             "type": "image_url",
@@ -226,18 +226,25 @@ class Agent:
 
             # Handle direct action string
             if isinstance(action, str):
-                return self.action_handler.handle_action(action, state)
-            
+                result = self.action_handler.handle_action(action, state)
             # Handle action object format
-            if isinstance(action, dict):
+            elif isinstance(action, dict):
                 # Handle nested action format from LLM
                 if "input" in action and isinstance(action["input"], dict):
-                    return self.action_handler.handle_action(action["input"], state)
+                    result = self.action_handler.handle_action(action["input"], state)
                 # Handle direct action format
                 elif "action" in action:
-                    return self.action_handler.handle_action(action, state)
+                    result = self.action_handler.handle_action(action, state)
+                else:
+                    return self._handle_error(f"Invalid action format: {action}")
+            else:
+                return self._handle_error(f"Invalid action format: {action}")
 
-            return self._handle_error(f"Invalid action format: {action}")
+            # Store the action result in state
+            if result["success"]:
+                state.last_action_result = result
+
+            return result
         except Exception as e:
             logger.error(f"Error executing action: {str(e)}")
             return self._handle_error(f"Error executing action: {str(e)}")

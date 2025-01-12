@@ -87,16 +87,11 @@ class ActionHandler:
             
             element_data = element_result["element_data"]
             
-            # Get element coordinates from element data
-            if "coordinates" not in element_data:
-                return self._handle_error("Element identifier did not return coordinates")
-            
             return {
                 "success": True,
                 "type": "action",
                 "result": {
                     "action": "click",
-                    "coordinates": element_data["coordinates"],
                     "element_data": {
                         "selector": element_data["selector"],
                         "element_type": element_data["element_type"],
