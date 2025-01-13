@@ -80,8 +80,16 @@ class ActionHandler:
 
             element_desc = action["element_description"]
             
-            # Identify the element for additional context
-            element_result = self.element_identifier.identify_element(element_desc, state.page_state["html"])
+            # Get screenshot from state
+            screenshot = state.page_state.get("screenshot")
+            
+            # Identify the element with screenshot
+            element_result = self.element_identifier.identify_element(
+                element_desc, 
+                state.page_state["html"],
+                screenshot
+            )
+            
             if not element_result["success"]:
                 return self._handle_error(element_result["error"])
             

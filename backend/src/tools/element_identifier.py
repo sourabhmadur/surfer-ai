@@ -13,17 +13,16 @@ class ElementIdentifier:
     def __init__(self, model: BaseLanguageModel):
         self.model = model
 
-    def identify_element(self, element_desc: str, html: str) -> Dict[str, Any]:
-        """Identify DOM element based on description."""
+    def identify_element(self, element_desc: str, html: str, screenshot: str = None) -> Dict[str, Any]:
+        """Identify DOM element based on description and screenshot."""
         logger.info(f"=== Identifying Element === Description: {element_desc}")
         
         try:
             # Preprocess HTML
-            # cleaned_html = html 
             cleaned_html = self._preprocess_html(html)
             
-            # Get LLM response
-            response = self._get_llm_response(element_desc, cleaned_html)
+            # Get LLM response with screenshot
+            response = self._get_llm_response(element_desc, cleaned_html, screenshot)
             element_data = self._parse_llm_response(response)
             
             # Validate and log results
@@ -110,10 +109,10 @@ class ElementIdentifier:
         # Keep element if it has any important attributes
         return any(attr in important_attrs for attr in element.attrs)
 
-    def _get_llm_response(self, element_desc: str, html: str) -> str:
+    def _get_llm_response(self, element_desc: str, html: str, screenshot: str = None) -> str:
         """Get response from LLM."""
         prompt = self._build_prompt(element_desc, html)
-        messages = self._build_messages(prompt)
+        messages = self._build_messages(prompt, screenshot)
         
         logger.info("Sending request to LLM...")
         response = self.model.invoke(messages)
@@ -223,9 +222,9 @@ For a navigation link:
 Analyze the HTML and provide the element details in the specified JSON format."""
 
     @staticmethod
-    def _build_messages(prompt: str) -> List[Dict[str, str]]:
+    def _build_messages(prompt: str, screenshot: str = None) -> List[Dict[str, Any]]:
         """Build messages for LLM."""
-        return [
+        messages = [
             {
                 "role": "system", 
                 "content": """You are an expert at analyzing HTML and identifying DOM elements. 
@@ -234,6 +233,30 @@ Analyze the HTML and provide the element details in the specified JSON format.""
                 You NEVER use IDs or complex chains of selectors.
                 You ALWAYS respond with valid JSON in the exact format specified in the prompt.
                 You NEVER include explanations or additional text outside the JSON structure."""
-            },
-            {"role": "user", "content": prompt}
-        ] 
+            }
+        ]
+
+        # Add prompt and screenshot if available
+        if screenshot:
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": screenshot
+                        }
+                    }
+                ]
+            })
+        else:
+            messages.append({
+                "role": "user",
+                "content": prompt
+            })
+
+        return messages 
