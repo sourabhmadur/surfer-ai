@@ -153,7 +153,7 @@
             documentHeight
           }
         });
-      }, 500);
+      }, 700);  // Increased from 500ms to 700ms to ensure scroll completes
     });
   }
 

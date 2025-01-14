@@ -125,13 +125,18 @@ class ActionHandler:
             if direction not in ["up", "down"]:
                 return self._handle_error(f"Invalid scroll direction: {direction}. Must be 'up' or 'down'")
 
+            # Get current page state
+            current_state = state.page_state
+
             return {
                 "success": True,
                 "type": "action",
                 "result": {
                     "action": "scroll",
                     "direction": direction,
-                    "pixels": pixels
+                    "pixels": pixels,
+                    "screenshot": current_state.get("screenshot", ""),
+                    "html": current_state.get("html", "")
                 }
             }
         except Exception as e:

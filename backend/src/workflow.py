@@ -10,7 +10,7 @@ from prompts import SYSTEM_PROMPT, USER_PROMPT
 from llm import LLMProvider
 from tools.element_identifier import ElementIdentifier
 from tools.action_handler import ActionHandler
-from models.base import Message, BrowserState
+from models.base import Message, BrowserState, Observation
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -43,53 +43,97 @@ class Agent:
             
             # Log current state
             logger.debug(f"Thinking about goal: {state.goal}")
-            logger.debug(f"HTML length: {len(state.page_state.get('html', ''))}")
+            logger.info(f"Current observations count: {len(state.observations)}")
+            if state.observations:
+                logger.debug(f"HTML length: {len(state.observations[-1].html)}")
+                logger.info(f"Timestamps of observations: {[obs.timestamp for obs in state.observations]}")
 
-            # Initialize conversation if empty
-            if not state.llm_conversation:
-                # Start with system prompt
-                state.llm_conversation.append({
-                    "role": "system", 
-                    "content": SYSTEM_PROMPT
-                })
-                # Add initial user message with goal and screenshot
-                state.llm_conversation.append({
+            # Build conversation for LLM
+            conversation = []
+            
+            # Add system prompt with goal
+            conversation.append({
+                "role": "system", 
+                "content": f"{SYSTEM_PROMPT}\n\nCurrent Goal: {state.goal}"
+            })
+
+            # Add past actions summary if any
+            past_actions_text = ""
+            if state.past_actions:
+                actions_list = []
+                for action_data in state.past_actions:
+                    if isinstance(action_data, dict) and "input" in action_data:
+                        action_input = action_data["input"]
+                        action_type = action_input.get("action", "unknown")
+                        
+                        # Build description based on action type
+                        if action_type == "click":
+                            desc = f"Clicked on: {action_input.get('element_description', 'unknown element')}"
+                        elif action_type == "type":
+                            desc = f"Typed text: {action_input.get('text', '')}"
+                        elif action_type == "scroll":
+                            desc = f"Scrolled {action_input.get('direction', 'unknown')} by {action_input.get('pixels', '0')} pixels"
+                        elif action_type == "keypress":
+                            desc = f"Pressed key: {action_input.get('key', 'unknown')}"
+                        elif action_type == "fetch_user_details":
+                            desc = "Fetched user details"
+                        elif action_type == "complete":
+                            desc = "Completed task"
+                        else:
+                            desc = f"Unknown action: {action_type}"
+                        
+                        actions_list.append(desc)
+                
+                if actions_list:
+                    past_actions_text = "Past actions:\n" + "\n".join(f"- {action}" for action in actions_list)
+            logger.info(f"Past actions: {past_actions_text}")
+            logger.info(f"Observations length: {len(state.observations)}")
+            # Add current observation with context
+            if state.observations:
+                # Add previous screenshots if available
+                if len(state.observations) > 1:
+                    previous_screenshots = []
+                    for obs in reversed(state.observations[:-1]):  # Skip the latest one as it's already added
+                        previous_screenshots.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": obs.screenshot
+                            }
+                        })
+                    
+                    if previous_screenshots:
+                        conversation.append({
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Here are the previous screenshots for comparison:"
+                                },
+                                *previous_screenshots
+                            ]
+                        })
+
+                # Add current screenshot with context
+                conversation.append({
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": USER_PROMPT.format(goal=state.goal)
+                            "text": f"{past_actions_text}\n\nAnalyze the current screenshot and determine the next action."
                         },
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": state.page_state.get("screenshot", "")
+                                "url": state.observations[-1].screenshot
                             }
                         }
                     ]
                 })
-            else:
-                # Add current screenshot as latest message with comparison context
-                state.llm_conversation.append({
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Previous actions taken: {state.last_action_result['result'] if state.last_action_result else 'No actions taken yet'}. Compare this screenshot with the previous ones to make your decision."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": state.page_state.get("screenshot", "")
-                            }
-                        }
-                    ]
-                })
-
+            
             # Get LLM response
             logger.info("Getting next action from LLM...")
             logger.info(f"Goal: {state.goal}")
-            response = self.llm.invoke(state.llm_conversation)
+            response = self.llm.invoke(conversation)
             
             try:
                 # Parse the response
@@ -111,14 +155,16 @@ class Agent:
                     # If still fails, try more aggressive cleanup
                     content = re.sub(r',(\s*[}\]])', r'\1', content)  # More aggressive trailing comma removal
                     content = re.sub(r'[\t\n\r]', '', content)  # Remove all whitespace
-                    content = re.sub(r',}', '}', content)  # Remove any remaining trailing commas
-                    content = re.sub(r',]', ']', content)  # Remove any remaining trailing commas in arrays
+                    content = re.sub(r',}', '}', content)
                     parsed_response = json.loads(content)
                 
-                logger.info(f"LLM Response: {parsed_response}")
+                # logger.info(f"LLM Response: {parsed_response}")
 
-                # Add assistant's response to conversation history
-                state.llm_conversation.append({"role": "assistant", "content": content})
+                # Store the action in past_actions if it's valid
+                if isinstance(parsed_response, dict) and "action" in parsed_response:
+                    action_to_store = parsed_response["action"]
+                    if isinstance(action_to_store, dict) and "tool" in action_to_store:
+                        state.past_actions.append(action_to_store)
                 
                 # Validate parsed response
                 if not isinstance(parsed_response, dict):
@@ -138,8 +184,8 @@ class Agent:
         except Exception as e:
             logger.error(f"Error in think method: {str(e)}", exc_info=True)
             return {
-                "thought": "Error occurred",
-                "action": f"Error: {str(e)}"
+                "thought": f"Error: {str(e)}",
+                "action": "Error: Failed to generate next action"
             }
 
     def execute(self, state: BrowserState) -> Dict[str, Any]:
@@ -304,26 +350,28 @@ def create_initial_state(session_id: int, goal: str, screenshot: str, html: str)
         
         logger.info(f"Creating initial state with goal: {goal}")
         
+        # Create initial observation
+        initial_observation = Observation(
+            screenshot=screenshot,
+            html=html
+        )
+        logger.info("Created initial observation")
+        
         # Create state with validated inputs
         state = BrowserState(
             goal=goal,
-            page_state={
-                "screenshot": screenshot,
-                "html": html
-            },
             session_id=session_id,
-            messages=[],
-            last_action_result=None,
-            llm_conversation=[]
+            observations=[initial_observation]  # Initialize with first observation
         )
+        logger.info(f"Initial state created with {len(state.observations)} observations")
         
         # Verify state was created correctly
         if not state.goal:
             raise ValueError("State created with empty goal")
-        if not state.page_state:
-            raise ValueError("State created with empty page_state")
+        if not state.observations:
+            raise ValueError("State created with empty observations")
             
-        logger.info("State created successfully")
+        logger.info(f"State created successfully. Observations count: {len(state.observations)}")
         return state
     except Exception as e:
         logger.error(f"Error creating state: {str(e)}", exc_info=True)

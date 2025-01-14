@@ -4,6 +4,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 import logging
 from workflow import Agent, create_initial_state
+from models.base import Observation
 import json
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,6 @@ class WebSocketHandler:
                 await self._send_error(error_msg)
         except Exception as e:
             logger.error(f"Error sending error message: {str(e)}", exc_info=True)
-        finally:
-            self._reset_state()
 
     async def cleanup(self):
         """Clean up resources when connection is closed."""
@@ -39,11 +38,13 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}", exc_info=True)
         finally:
+            # Reset state only when connection is closed
             self._reset_state()
 
     async def handle_message(self, message: Dict[str, Any]):
         """Route and handle incoming messages."""
         try:
+            logger.info("\n=== ENTERING handle_message ===")
             # Create a clean version of the message for logging
             if isinstance(message, dict):
                 log_message = {}
@@ -58,11 +59,9 @@ class WebSocketHandler:
                     else:
                         log_message[key] = value
 
-            logger.debug("\n=== Message Received ===")
-            logger.debug(f"Message type: {type(message)}")
-            logger.debug(f"Message content (sensitive data redacted): {log_message}")
-            logger.debug(f"Message keys: {message.keys() if isinstance(message, dict) else 'Not a dict'}")
-            logger.debug("=== End Message ===\n")
+            logger.info(f"Message type: {type(message)}")
+            logger.info(f"Message content (sensitive data redacted): {log_message}")
+            logger.info(f"Message keys: {message.keys() if isinstance(message, dict) else 'Not a dict'}")
             
             if not isinstance(message, dict):
                 logger.error(f"Invalid message format. Expected dict, got {type(message)}")
@@ -73,7 +72,7 @@ class WebSocketHandler:
             message_type = message.get("type")
             if not message_type and "goal" in message:
                 message_type = "goal"
-                logger.debug("No type specified, but found goal field. Setting type to 'goal'")
+                logger.info("No type specified, but found goal field. Setting type to 'goal'")
 
             logger.info(f"Processing message of type: {message_type}")
 
@@ -85,10 +84,10 @@ class WebSocketHandler:
             
             handler = handlers.get(message_type)
             if handler:
-                logger.debug(f"Found handler for message type: {message_type}")
+                logger.info(f"Found handler for message type: {message_type}")
                 await handler(message)
             else:
-                logger.debug("No specific handler found, treating as action result")
+                logger.info(f"No specific handler found for type {message_type}, treating as action result")
                 await self._handle_action_result(message)
 
         except Exception as e:
@@ -157,7 +156,6 @@ class WebSocketHandler:
             try:
                 logger.debug("Starting agent execution...")
                 result = await self._execute_agent()
-                logger.debug(f"Agent execution result: {result}")
                 await self._handle_agent_result(result)
             except Exception as e:
                 logger.error(f"Error executing agent: {str(e)}", exc_info=True)
@@ -170,6 +168,9 @@ class WebSocketHandler:
     async def _handle_action_result(self, message: Dict[str, Any]):
         """Handle action result message."""
         try:
+            logger.info("\n=== ENTERING _handle_action_result ===")
+            logger.info(f"Message received: {self._clean_data_for_logging(message)}")
+            
             # Validate message format
             if not isinstance(message, dict):
                 logger.error("Invalid message format: not a dictionary")
@@ -191,8 +192,21 @@ class WebSocketHandler:
                 logger.error("Successful message missing data field")
                 return
 
+            logger.info("=== State Before Update ===")
+            logger.info(f"State exists: {self.state is not None}")
+            if self.state:
+                logger.info(f"Observations count: {len(self.state.observations)}")
+                logger.info(f"Observation timestamps: {[obs.timestamp for obs in self.state.observations]}")
+
             # Update state with new page state
+            logger.info("Calling _update_state...")
             self._update_state(message)
+            
+            logger.info("=== State After Update ===")
+            logger.info(f"State exists: {self.state is not None}")
+            if self.state:
+                logger.info(f"Observations count: {len(self.state.observations)}")
+                logger.info(f"Observation timestamps: {[obs.timestamp for obs in self.state.observations]}")
             
             # Continue agent execution
             result = await self._execute_agent()
@@ -220,16 +234,14 @@ class WebSocketHandler:
         
         logger.info(f"Executing agent with goal: {self.state.goal}")
         result = self.agent.execute(self.state)
-        logger.info(f"Agent execution result: {result}")
         return result
 
     async def _handle_agent_result(self, result: Dict[str, Any]):
         """Handle agent execution result."""
-        logger.info(f"Handling agent result: {result}")
         
         if not result.get("success", False):
             await self._send_error(result.get("error", "Unknown error occurred"))
-            self._reset_state()
+            # Don't reset state on regular errors
             return
 
         if result["type"] == "action":
@@ -260,7 +272,9 @@ class WebSocketHandler:
             
             # Wait for response from frontend
             try:
+                logger.info("Waiting for response from frontend...")
                 response = await self.websocket.receive_json()
+                logger.info("Raw response received from frontend")
                 # Clean response before logging
                 clean_response = self._clean_data_for_logging(response)
                 logger.info(f"Received response from frontend: {clean_response}")
@@ -271,8 +285,8 @@ class WebSocketHandler:
                     return
                 
                 # Continue agent execution on success
-                next_result = await self._execute_agent()
-                await self._handle_agent_result(next_result)
+                logger.info("Processing frontend response through _handle_action_result...")
+                await self._handle_action_result(response)
                 
             except Exception as e:
                 logger.error(f"Error receiving response from frontend: {str(e)}")
@@ -281,13 +295,15 @@ class WebSocketHandler:
                 
         elif result["type"] == "complete":
             await self._send_completion(result)
+            # Reset state only on successful completion
+            self._reset_state()
         else:
             await self._send_error(f"Unknown result type: {result['type']}")
-            self._reset_state()
+            # Don't reset state for unknown result types
+
 
     async def _send_action(self, result: Dict[str, Any]):
         """Send action message to client."""
-        logger.info(f"Sending action to client: {result}")
         await self.websocket.send_json({
             "type": "action",
             "data": result.get("result", {})
@@ -322,6 +338,9 @@ class WebSocketHandler:
 
     def _update_state(self, message: Dict[str, Any]):
         """Update state with new page state."""
+        logger.info("\n=== ENTERING _update_state ===")
+        logger.info(f"Message received: {self._clean_data_for_logging(message)}")
+        
         if not self.state:
             logger.error("Cannot update state: state is None")
             return
@@ -332,13 +351,30 @@ class WebSocketHandler:
 
         try:
             data = message["data"]
-            self.state.page_state = {
-                "screenshot": data.get("screenshot", ""),
-                "html": data.get("html", "")
-            }
-            logger.info("State updated successfully")
+            logger.info("=== State Update Start ===")
+            logger.info(f"Current state observations before update: {len(self.state.observations)}")
+            logger.info(f"Current observation timestamps: {[obs.timestamp for obs in self.state.observations]}")
+            logger.info(f"Data contains screenshot: {bool(data.get('screenshot'))}, html: {bool(data.get('html'))}")
+            
+            # Only update if we have valid data
+            if data.get("screenshot") or data.get("html"):
+                # Log state before update
+                logger.info("Updating page state...")
+                
+                # Use the page_state setter to update state
+                self.state.page_state = {
+                    "screenshot": data.get("screenshot", ""),
+                    "html": data.get("html", "")
+                }
+                
+                logger.info("=== State Update Complete ===")
+                logger.info(f"New state observations count: {len(self.state.observations)}")
+                logger.info(f"New observation timestamps: {[obs.timestamp for obs in self.state.observations]}")
+                logger.info(f"State update successful: {bool(self.state.page_state)}")
+            else:
+                logger.warning("Skipping state update - no valid screenshot or HTML data")
         except Exception as e:
-            logger.error(f"Error updating state: {str(e)}")
+            logger.error(f"Error updating state: {str(e)}", exc_info=True)
 
     @staticmethod
     def _validate_goal_message(message: Dict[str, Any]) -> bool:

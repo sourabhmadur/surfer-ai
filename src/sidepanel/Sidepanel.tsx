@@ -447,8 +447,10 @@ export default function Sidepanel() {
     });
     
     if (response && response.success) {
-        // Get current page state after successful action
         try {
+            // Wait for scroll animations to complete
+            await new Promise(resolve => setTimeout(resolve, 750));  // Wait longer than the content script's 500ms
+
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (!tab.id) throw new Error('No active tab');
 
