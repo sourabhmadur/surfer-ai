@@ -40,7 +40,8 @@ class ActionHandler:
                     "click": self._handle_click,
                     "scroll": self._handle_scroll,
                     "keypress": self._handle_keypress,
-                    "fetch_user_details": self._handle_fetch_user_details
+                    "fetch_user_details": self._handle_fetch_user_details,
+                    "wait": self._handle_wait
                 }
 
                 if action_type in handlers:
@@ -184,6 +185,29 @@ class ActionHandler:
             }
         except Exception as e:
             return self._handle_error(f"Error handling fetch user details action: {str(e)}")
+
+    def _handle_wait(self, action: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
+        """Handle wait actions."""
+        try:
+            # Validate required fields
+            if "duration" not in action:
+                return self._handle_error("Missing required field 'duration' for wait action")
+
+            duration = int(action["duration"])
+            if duration <= 0:
+                return self._handle_error("Duration must be positive")
+
+            # No actual waiting needed here since the frontend will handle it
+            return {
+                "success": True,
+                "type": "action",
+                "result": {
+                    "action": "wait",
+                    "duration": duration
+                }
+            }
+        except Exception as e:
+            return self._handle_error(f"Error handling wait action: {str(e)}")
 
     @staticmethod
     def _handle_complete(action: Dict[str, Any]) -> Dict[str, Any]:

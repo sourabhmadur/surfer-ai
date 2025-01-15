@@ -194,6 +194,15 @@ async function handleExecuteAction(action: any, tabId?: number) {
 
   console.log('=== Executing Browser Action ===', { tabId, action });
 
+  // Add debug logging for search interactions
+  if (action.action === 'click' && action.element_data?.element_type === 'input') {
+    console.log('=== Search Interaction: Clicking Input ===', action.element_data);
+  } else if (action.action === 'type') {
+    console.log('=== Search Interaction: Typing Text ===', { text: action.text });
+  } else if (action.action === 'keypress' && action.key === 'Enter') {
+    console.log('=== Search Interaction: Pressing Enter ===');
+  }
+
   try {
     // Get the tab URL
     const tab = await chrome.tabs.get(tabId);
@@ -344,6 +353,33 @@ async function handleExecuteAction(action: any, tabId?: number) {
               error: response.details?.error || 'Type action failed'
             });
           }
+        }
+
+        // For wait actions
+        if (action.action === 'wait') {
+          if (response.success) {
+            handleGetPageState(tabId).then(pageState => {
+              resolve({
+                ...pageState,
+                details: {
+                  ...response.details,
+                  screenshot: pageState.screenshot,
+                  html: pageState.html
+                }
+              });
+            }).catch(error => {
+              resolve({
+                success: false,
+                error: `Wait action succeeded but failed to get page state: ${error.message}`
+              });
+            });
+          } else {
+            resolve({
+              success: false,
+              error: response.details?.error || 'Wait action failed'
+            });
+          }
+          return;
         }
 
         // Default response

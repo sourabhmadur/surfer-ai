@@ -379,6 +379,40 @@ export default function Sidepanel() {
                     });
                 }
             }
+            // Handle wait actions
+            else if (actionData.action === 'wait') {
+                logger.log('Processing wait action', actionData);
+                actionMessage = `Waiting for ${actionData.duration} seconds`;
+                
+                try {
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (!tab?.id) {
+                        throw new Error('No active tab found');
+                    }
+
+                    // Send wait action to background script
+                    const messageToBackground = {
+                        type: 'EXECUTE_ACTION',
+                        action: {
+                            action: 'wait',
+                            duration: actionData.duration
+                        },
+                        tabId: tab.id
+                    };
+                    
+                    logger.log('Sending wait action to background', messageToBackground);
+                    chrome.runtime.sendMessage(messageToBackground, (response) => {
+                        logger.log('Background response (wait)', response);
+                        handleActionResult(response);
+                    });
+                } catch (error) {
+                    logger.error('Failed to execute wait action', error);
+                    handleActionResult({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Failed to execute wait action'
+                    });
+                }
+            }
             else {
                 logger.error('Unknown action:', actionData);
                 handleActionResult({

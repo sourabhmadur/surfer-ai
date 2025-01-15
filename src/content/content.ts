@@ -386,6 +386,53 @@
     }
   }
 
+  // Function to handle wait action
+  async function handleWait(duration: number): Promise<ActionResponse> {
+    try {
+        logger.log(`Waiting for ${duration} seconds...`);
+        
+        // Create visual indicator
+        const indicator = document.createElement('div');
+        indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            z-index: 999999;
+            font-family: sans-serif;
+            font-size: 12px;
+        `;
+        indicator.textContent = `Waiting for ${duration} seconds...`;
+        document.body.appendChild(indicator);
+
+        // Wait for the specified duration
+        await new Promise(resolve => setTimeout(resolve, duration * 1000));
+
+        // Remove indicator
+        indicator.remove();
+
+        return {
+            success: true,
+            details: {
+                waited: true,
+                duration: duration
+            }
+        };
+    } catch (error) {
+        logger.error('Error in wait action:', error);
+        return {
+            success: false,
+            details: {
+                error: error instanceof Error ? error.message : 'Failed to execute wait action'
+            }
+        };
+    }
+}
+
   // Function to initialize the content script
   function initializeContentScript() {
     logger.log('Initializing Content Script');
@@ -562,6 +609,24 @@
             });
           }
           return true;
+        }
+        else if (action.action === 'wait') {
+          logger.log('Handling wait action:', action);
+          handleWait(action.duration)
+            .then(response => {
+              logger.log('Wait action response:', response);
+              sendResponse(response);
+            })
+            .catch(error => {
+              logger.error('Error in wait action:', error);
+              sendResponse({
+                success: false,
+                details: {
+                  error: error instanceof Error ? error.message : 'Failed to execute wait action'
+                }
+              });
+            });
+          return true;  // Will respond asynchronously
         }
         else {
           sendResponse({

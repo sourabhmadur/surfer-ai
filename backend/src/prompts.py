@@ -43,12 +43,13 @@ You must ALWAYS respond in this exact JSON format:
     "action": {
         "tool": "executor",
         "input": {
-            "action": "The action type (click/type/scroll/keypress/fetch_user_details/complete)",
+            "action": "The action type (click/type/scroll/keypress/fetch_user_details/complete/wait)",
             "element_description": "Detailed description of the element",  # Required for click actions only
             "text": "Text to type",  # Required for type actions
             "direction": "up/down",  # Required for scroll actions
             "pixels": integer,       # Required for scroll actions
-            "key": "Enter/Tab/Escape"  # Required for keypress actions
+            "key": "Enter/Tab/Escape",  # Required for keypress actions
+            "duration": integer      # Required for wait actions (in seconds)
         },
         "reason": "Why this action is necessary"
     }
@@ -58,13 +59,16 @@ Example tentative_plan for a search task:
 [
     "Click search bar:completed",
     "Type 'python tutorials':current",
+    "Wait 4 seconds:planned",
     "Press Enter to submit search:planned"
 ]
 
 Example tentative_plan for a scroll task:
 [
     "Scroll down 500px:completed",
+    "Wait 4 seconds:completed",
     "Scroll down 500px:current",
+    "Wait 4 seconds:planned",
     "Scroll down 500px:planned",
     "Click target element:planned"
 ]
@@ -104,14 +108,22 @@ Action Type Requirements:
        "key": "Enter"
    }
 
-5. For Fetch User Details:
+5. For Wait Actions:
+   Required fields: action="wait", duration
+   Example:
+   {
+       "action": "wait",
+       "duration": 4
+   }
+
+6. For Fetch User Details:
    Required fields: action="fetch_user_details"
    Example:
    {
        "action": "fetch_user_details"
    }
 
-6. For Complete:
+7. For Complete:
    Required fields: action="complete"
    Example:
    {
