@@ -88,6 +88,7 @@ class Agent:
                     past_actions_text = "Past actions:\n" + "\n".join(f"- {action}" for action in actions_list)
             logger.info(f"Past actions: {past_actions_text}")
             logger.info(f"Observations length: {len(state.observations)}")
+            
             # Add current observation with context
             if state.observations:
                 # Add previous screenshots if available
@@ -129,7 +130,7 @@ class Agent:
                         }
                     ]
                 })
-            
+
             # Get LLM response
             logger.info("Getting next action from LLM...")
             logger.info(f"Goal: {state.goal}")
@@ -151,14 +152,14 @@ class Agent:
                 
                 try:
                     parsed_response = json.loads(content)
+                    logger.info(f"LLM Response: {json.dumps(parsed_response, indent=2)}")
                 except json.JSONDecodeError:
                     # If still fails, try more aggressive cleanup
                     content = re.sub(r',(\s*[}\]])', r'\1', content)  # More aggressive trailing comma removal
                     content = re.sub(r'[\t\n\r]', '', content)  # Remove all whitespace
                     content = re.sub(r',}', '}', content)
                     parsed_response = json.loads(content)
-                
-                # logger.info(f"LLM Response: {parsed_response}")
+                    logger.info(f"Could not parse LLM Response: {json.dumps(parsed_response, indent=2)}")
 
                 # Store the action in past_actions if it's valid
                 if isinstance(parsed_response, dict) and "action" in parsed_response:
@@ -231,9 +232,16 @@ class Agent:
                 logger.error(f"Missing required top-level fields. Got: {list(response.keys())}")
                 return False
 
-            # Check thought structure - only validate it has required fields
+            # Check thought structure - validate required fields
             thought = response.get("thought", {})
-            required_thought_fields = {"previous_actions", "current_state", "next_step", "goal_progress"}
+            required_thought_fields = {
+                "goal",
+                "previous_actions", 
+                "current_state", 
+                "next_step", 
+                "tentative_plan",
+                "goal_progress"
+            }
             
             if not all(field in thought for field in required_thought_fields):
                 logger.error(f"Missing thought fields. Required: {required_thought_fields}, Got: {list(thought.keys())}")

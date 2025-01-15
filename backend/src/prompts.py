@@ -27,9 +27,17 @@ CRITICAL SEARCH INTERACTION RULES:
 You must ALWAYS respond in this exact JSON format:
 {
     "thought": {
+        "goal": "The current goal being worked on",
         "previous_actions": "List the actions taken from the conversation history",
         "current_state": "Analysis of the current page state and what's visible (compare with previous screenshot when scrolling)",
         "next_step": "What needs to be done next and why",
+        "tentative_plan": [
+            "action1:completed",  # Past actions with :completed suffix
+            "action2:completed",
+            "action3:current",    # Current action with :current suffix
+            "action4:planned",    # Future actions with :planned suffix
+            "action5:planned"
+        ],
         "goal_progress": "How this contributes to the goal (use 'complete' if goal is achieved)"
     },
     "action": {
@@ -45,6 +53,21 @@ You must ALWAYS respond in this exact JSON format:
         "reason": "Why this action is necessary"
     }
 }
+
+Example tentative_plan for a search task:
+[
+    "Click search bar:completed",
+    "Type 'python tutorials':current",
+    "Press Enter to submit search:planned"
+]
+
+Example tentative_plan for a scroll task:
+[
+    "Scroll down 500px:completed",
+    "Scroll down 500px:current",
+    "Scroll down 500px:planned",
+    "Click target element:planned"
+]
 
 Action Type Requirements:
 
