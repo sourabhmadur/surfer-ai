@@ -16,25 +16,28 @@ def main():
     log_file = get_or_create_log_file()
     setup_logging()
     
+
     logger = logging.getLogger(__name__)
     logger.info(f"Using log file: {log_file}")
     logger.info("Starting Selenium agent")
     
     # Only import after logging is configured
     from src.tools.selenium_agent import SeleniumAgent
-    
+
     # Initialize the agent
     agent = SeleniumAgent(url="http://localhost:8000")
     agent.setup()
+    
     
     try:
         # Example task: Navigate and interact with Hacker News
         logger.info("Starting task execution")
         result = agent.run_task(
-            url="https://news.ycombinator.com/",
-            goal="scroll down, Type 'python' in the search bar and press enter"
+            url="https://arxiv.org/",
+            goal="Search 'Poly encoder' by title on ArXiv and check whether the articles in the search results provide HTML access."
         )
         
+
         # Log the result
         logger.info("Task completed")
         logger.info(f"Status: {'Success' if result.get('type') == 'complete' else 'Failed'}")

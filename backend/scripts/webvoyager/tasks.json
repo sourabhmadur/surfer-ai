@@ -1,0 +1,14 @@
+{
+    "tasks": [
+        {
+            "id": "task_2",
+            "url": "https://www.arxiv.org/",
+            "goal": "Find the names of people in ArXiv's Leadership Team."
+        },
+        {
+            "id": "task_2",
+            "url": "https://www.arxiv.org/",
+            "goal": "How many articles on ArXiv with 'SimCSE' in the title?"
+        }
+    ]
+}
