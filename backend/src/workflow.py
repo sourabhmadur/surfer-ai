@@ -8,12 +8,12 @@ from enum import Enum, auto
 from dotenv import load_dotenv
 from prompts import SYSTEM_PROMPT, USER_PROMPT
 from llm import LLMProvider
-from tools.element_identifier import ElementIdentifier
 from tools.action_handler import ActionHandler
 from models.base import Message, BrowserState, Observation
+from src.utils.logging import truncate_data
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Get logger with the full module path
+logger = logging.getLogger("src.workflow")
 
 # Load environment variables
 load_dotenv()
@@ -27,12 +27,13 @@ class ToolName(Enum):
         return self.name.lower()
 
 class Agent:
-    """ReAct agent for browser automation."""
+    """Browser automation agent."""
+    
     def __init__(self):
+        """Initialize the agent."""
+        self.max_iterations = 10
         self.llm = LLMProvider.get_llm()
-        self.element_identifier = ElementIdentifier(self.llm)
-        self.action_handler = ActionHandler(self.element_identifier)
-        self.max_iterations = 5
+        self.action_handler = ActionHandler(llm=self.llm)
 
     def think(self, state: BrowserState) -> Dict[str, Any]:
         """Generate next action using LLM."""
@@ -42,13 +43,15 @@ class Agent:
                 raise ValueError("Invalid state object")
             
             # Log current state
-            logger.debug(f"Thinking about goal: {state.goal}")
+            logger.info(f"Thinking about goal: {state.goal}")
             logger.info(f"Current observations count: {len(state.observations)}")
             if state.observations:
-                logger.debug(f"HTML length: {len(state.observations[-1].html)}")
-                logger.info(f"Timestamps of observations: {[obs.timestamp for obs in state.observations]}")
+                logger.info("=== Current Observation ===")
+                logger.info(f"Screenshot size: {len(state.observations[-1].screenshot)} bytes")
+                logger.info(f"HTML size: {len(state.observations[-1].html)} bytes")
 
             # Build conversation for LLM
+            logger.info("=== Building LLM Conversation ===")
             conversation = []
             
             # Add system prompt with goal
@@ -56,37 +59,33 @@ class Agent:
                 "role": "system", 
                 "content": f"{SYSTEM_PROMPT}\n\nCurrent Goal: {state.goal}"
             })
+            logger.info("Added system prompt")
 
             # Add past actions summary if any
             past_actions_text = ""
             if state.past_actions:
+                logger.info(f"Adding {len(state.past_actions)} past actions")
                 actions_list = []
                 for action_data in state.past_actions:
-                    if isinstance(action_data, dict) and "input" in action_data:
-                        action_input = action_data["input"]
-                        action_type = action_input.get("action", "unknown")
-                        
-                        # Build description based on action type
-                        if action_type == "click":
-                            desc = f"Clicked on: {action_input.get('element_description', 'unknown element')}"
-                        elif action_type == "type":
-                            desc = f"Typed text: {action_input.get('text', '')}"
-                        elif action_type == "scroll":
-                            desc = f"Scrolled {action_input.get('direction', 'unknown')} by {action_input.get('pixels', '0')} pixels"
-                        elif action_type == "keypress":
-                            desc = f"Pressed key: {action_input.get('key', 'unknown')}"
-                        elif action_type == "fetch_user_details":
-                            desc = "Fetched user details"
-                        elif action_type == "complete":
-                            desc = "Completed task"
+                    try:
+                        # Use the description field that was added by add_action
+                        if "description" in action_data:
+                            actions_list.append(action_data["description"])
                         else:
-                            desc = f"Unknown action: {action_type}"
-                        
-                        actions_list.append(desc)
+                            # Fallback to basic action type if no description
+                            actions_list.append(f"Action: {action_data.get('action', 'unknown')}")
+                    except Exception as e:
+                        logger.error(f"Error formatting action: {str(e)}")
+                        continue
                 
                 if actions_list:
                     past_actions_text = "Past actions:\n" + "\n".join(f"- {action}" for action in actions_list)
-            logger.info(f"Past actions: {past_actions_text}")
+                    logger.info(f"Past actions:\n{past_actions_text}")
+                else:
+                    logger.info("No past actions to format")
+            else:
+                logger.info("No past actions")
+
             logger.info(f"Observations length: {len(state.observations)}")
             
             # Add current observation with context
@@ -94,7 +93,7 @@ class Agent:
                 # Add previous screenshots if available
                 if len(state.observations) > 1:
                     previous_screenshots = []
-                    for obs in reversed(state.observations[:-1]):  # Skip the latest one as it's already added
+                    for obs in reversed(state.observations[:-1]):
                         previous_screenshots.append({
                             "type": "image_url",
                             "image_url": {
@@ -132,61 +131,183 @@ class Agent:
                 })
 
             # Get LLM response
-            logger.info("Getting next action from LLM...")
-            logger.info(f"Goal: {state.goal}")
-            response = self.llm.invoke(conversation)
-            
+            logger.info("=== Calling LLM ===")
+            logger.info(f"Conversation length: {len(conversation)} messages")
             try:
-                # Parse the response
-                content = response.content
-                # Extract JSON part if it exists
-                json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
-                if json_match:
-                    content = json_match.group(1)
+                response = self.llm.invoke(conversation)
+                logger.info("Got response from LLM")
                 
-                # Clean up common JSON formatting issues
-                content = re.sub(r',(\s*[}\]])', r'\1', content)  # Remove trailing commas before closing brackets
-                content = re.sub(r',\s*\n\s*([}\]])', r'\1', content)  # Remove trailing commas with newlines
-                content = re.sub(r'\n\s*([}\]])', r'\1', content)  # Remove extra newlines before closing brackets
-                content = content.strip()  # Remove extra whitespace
+                # Log truncated response
+                content = response.content
+                truncated_content = truncate_data({"content": content})["content"]
+                logger.info("=== Raw LLM Response ===")
+                logger.info(f"{truncated_content}")
                 
                 try:
-                    parsed_response = json.loads(content)
-                    logger.info(f"LLM Response: {json.dumps(parsed_response, indent=2)}")
-                except json.JSONDecodeError:
-                    # If still fails, try more aggressive cleanup
-                    content = re.sub(r',(\s*[}\]])', r'\1', content)  # More aggressive trailing comma removal
-                    content = re.sub(r'[\t\n\r]', '', content)  # Remove all whitespace
-                    content = re.sub(r',}', '}', content)
-                    parsed_response = json.loads(content)
-                    logger.info(f"Could not parse LLM Response: {json.dumps(parsed_response, indent=2)}")
+                    # Parse the response
+                    logger.info("=== Processing LLM Response ===")
+                    
+                    # Extract JSON part if it exists
+                    json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+                    if json_match:
+                        content = json_match.group(1)
+                        logger.info("Found JSON block")
+                        logger.info("=== Extracted JSON Content ===")
+                        logger.info(truncate_data({"content": content})["content"])
+                    else:
+                        logger.error("No JSON block found in LLM response")
+                        logger.info("Attempting to parse entire response as JSON")
 
-                # Store the action in past_actions if it's valid
-                if isinstance(parsed_response, dict) and "action" in parsed_response:
-                    action_to_store = parsed_response["action"]
-                    if isinstance(action_to_store, dict) and "tool" in action_to_store:
-                        state.past_actions.append(action_to_store)
-                
-                # Validate parsed response
-                if not isinstance(parsed_response, dict):
-                    raise ValueError("LLM response is not a dictionary")
-                
-                if "action" not in parsed_response:
-                    raise ValueError("LLM response missing 'action' field")
-                
-                return parsed_response
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM response: {str(e)}")
-                logger.error(f"Raw response: {response.content}")
-                return {
-                    "thought": "Error parsing response",
-                    "action": "Error: Failed to parse LLM response"
-                }
+                    # Clean up common JSON formatting issues
+                    content = re.sub(r',(\s*[}\]])', r'\1', content)  # Remove trailing commas
+                    content = re.sub(r',\s*\n\s*([}\]])', r'\1', content)  # Remove trailing commas with newlines
+                    content = re.sub(r'\n\s*([}\]])', r'\1', content)  # Remove extra newlines
+                    content = content.strip()
+                    
+                    logger.info("=== Cleaned Content ===")
+                    logger.info(content)
+                    
+                    try:
+                        parsed_response = json.loads(content)
+                        logger.info("=== Successfully Parsed JSON ===")
+                        logger.info(json.dumps(parsed_response, indent=2))
+
+                        # Validate response structure
+                        if not isinstance(parsed_response, dict):
+                            raise ValueError(f"LLM response is not a dictionary. Got: {type(parsed_response)}")
+                        
+                        required_fields = ["thought", "action"]
+                        missing_fields = [field for field in required_fields if field not in parsed_response]
+                        if missing_fields:
+                            raise ValueError(f"LLM response missing required fields: {missing_fields}")
+                        
+                        # Validate thought structure
+                        thought = parsed_response["thought"]
+                        if not isinstance(thought, dict):
+                            raise ValueError(f"'thought' must be a dictionary. Got: {type(thought)}")
+                        
+                        required_thought_fields = ["goal", "current_state", "next_step"]
+                        missing_thought_fields = [field for field in required_thought_fields if field not in thought]
+                        if missing_thought_fields:
+                            raise ValueError(f"'thought' missing required fields: {missing_thought_fields}")
+                        
+                        # Validate action structure
+                        action = parsed_response["action"]
+                        if not isinstance(action, dict):
+                            raise ValueError(f"'action' must be a dictionary. Got: {type(action)}")
+                        
+                        if "tool" not in action:
+                            raise ValueError("'action' missing 'tool' field")
+                        
+                        # Parse and validate the action structure
+                        if parsed_response["action"]["tool"] == "executor":
+                            action_input = parsed_response["action"]["input"]
+                            
+                            # Add element identification for click actions
+                            if action_input.get("action") == "click":
+                                if "element_description" in action_input:
+                                    # Get element data using element identifier
+                                    element_desc = action_input["element_description"]
+                                    html = state.observations[-1].html if state.observations else ""
+                                    screenshot = state.observations[-1].screenshot if state.observations else ""
+                                    
+                                    element_result = self.action_handler.element_identifier.identify_element(
+                                        element_desc=element_desc,
+                                        html=html,
+                                        screenshot=screenshot
+                                    )
+                                    
+                                    if not element_result["success"]:
+                                        logger.error(f"Failed to identify element: {element_result.get('error')}")
+                                        return {
+                                            "success": False,
+                                            "error": f"Failed to identify element: {element_result.get('error')}"
+                                        }
+                                        
+                                    # Update action with element data
+                                    action_input["element_data"] = element_result["element_data"]
+                                    parsed_response["action"]["input"] = action_input
+                            elif action_input.get("action") == "keypress":
+                                # Validate keypress action
+                                key = action_input.get("key", "").lower()
+                                if key not in ["enter", "tab", "escape"]:
+                                    logger.error(f"Invalid key: {key}")
+                                    return {
+                                        "success": False,
+                                        "error": f"Invalid key: {key}. Valid keys are: enter, tab, escape"
+                                    }
+
+                        return parsed_response
+
+                    except json.JSONDecodeError as e:
+                        logger.error(f"JSON Parse Error: {str(e)}")
+                        logger.error(f"Error location: line {e.lineno}, column {e.colno}")
+                        logger.error(f"Error context: {e.doc[max(0, e.pos-50):e.pos+50]}")
+                        return {
+                            "thought": {
+                                "goal": state.goal,
+                                "previous_actions": [],
+                                "current_state": "Error parsing LLM response",
+                                "next_step": "Failed to parse response, stopping execution",
+                                "tentative_plan": ["stop:error"],
+                                "goal_progress": "error"
+                            },
+                            "action": {
+                                "tool": "executor",
+                                "input": {
+                                    "action": "complete"  # Stop execution instead of waiting
+                                },
+                                "reason": "Failed to parse LLM response"
+                            }
+                        }
+
+                except Exception as e:
+                    logger.error(f"Error processing LLM response: {str(e)}")
+                    return {
+                        "thought": {
+                            "goal": state.goal,
+                            "previous_actions": [],
+                            "current_state": f"Error: {str(e)}",
+                            "next_step": "Failed to process response, stopping execution",
+                            "tentative_plan": ["stop:error"],
+                            "goal_progress": "error"
+                        },
+                        "action": {
+                            "tool": "executor",
+                            "input": {
+                                "action": "complete"  # Stop execution instead of waiting
+                            },
+                            "reason": "Failed to process LLM response"
+                        }
+                    }
+
+            except Exception as e:
+                logger.error(f"Error calling LLM: {str(e)}")
+                raise
+
         except Exception as e:
-            logger.error(f"Error in think method: {str(e)}", exc_info=True)
+            # Clean up error message if it contains base64 data
+            error_msg = str(e)
+            if "data:image/" in error_msg or ";base64," in error_msg:
+                error_msg = "Error processing image data"
+            
+            logger.error(f"Error in think method: {error_msg}")
             return {
-                "thought": f"Error: {str(e)}",
-                "action": "Error: Failed to generate next action"
+                "thought": {
+                    "goal": state.goal if state else "unknown",
+                    "previous_actions": [],
+                    "current_state": f"Error: {error_msg}",
+                    "next_step": "Failed to execute, stopping",
+                    "tentative_plan": ["stop:error"],
+                    "goal_progress": "error"
+                },
+                "action": {
+                    "tool": "executor",
+                    "input": {
+                        "action": "complete"  # Stop execution instead of waiting
+                    },
+                    "reason": "Error in think method"
+                }
             }
 
     def execute(self, state: BrowserState) -> Dict[str, Any]:
@@ -207,6 +328,14 @@ class Agent:
                 # Handle completion if LLM indicates goal is complete
                 if response.get("thought", {}).get("goal_progress", "").lower() == "complete":
                     return self._handle_completion(response.get("thought", {}).get("goal_progress"))
+
+                # Execute action
+                action_input = response.get("action", {}).get("input", {})
+                if not action_input:
+                    return self._handle_error("Missing action input")
+
+                # Use state's add_action method to properly track the action
+                state.add_action(action_input)
 
                 # Execute action
                 result = self._execute_action(response, state)
@@ -279,41 +408,32 @@ class Agent:
             return None
 
     def _execute_action(self, response: Dict[str, Any], state: BrowserState) -> Dict[str, Any]:
-        """Execute the chosen action."""
+        """Execute the next action."""
         try:
-            # Handle error responses from think method
-            if isinstance(response.get("action"), str) and response["action"].startswith("Error:"):
-                return self._handle_error(response["action"])
-
-            if "action" not in response:
-                return self._handle_error("No action provided in response")
-
-            action = response["action"]
-            logger.info(f"Executing action: {action}")
-
-            # Handle direct action string
-            if isinstance(action, str):
-                result = self.action_handler.handle_action(action, state)
-            # Handle action object format
-            elif isinstance(action, dict):
-                # Handle nested action format from LLM
-                if "input" in action and isinstance(action["input"], dict):
-                    result = self.action_handler.handle_action(action["input"], state)
-                # Handle direct action format
-                elif "action" in action:
-                    result = self.action_handler.handle_action(action, state)
-                else:
-                    return self._handle_error(f"Invalid action format: {action}")
+            # Add debug logging
+            logger.info("=== Executing Action ===")
+            logger.info(f"Current past_actions count: {len(state.past_actions) if state.past_actions else 0}")
+            
+            # Get action details
+            action = response.get("action", {})
+            tool_name = action.get("tool", "").lower()
+            action_input = action.get("input", {})
+            
+            # Execute action using appropriate tool
+            if tool_name == str(ToolName.EXECUTOR):
+                # Execute action
+                result = self.action_handler.handle_action(action_input)
+                
+                # Add more debug logging
+                logger.info(f"Past actions after execution: {len(state.past_actions)}")
+                if state.past_actions:
+                    logger.info(f"Last action added: {state.past_actions[-1]}")
+                
+                return result
             else:
-                return self._handle_error(f"Invalid action format: {action}")
-
-            # Store the action result in state
-            if result["success"]:
-                state.last_action_result = result
-
-            return result
+                return self._handle_error(f"Unknown tool: {tool_name}")
+            
         except Exception as e:
-            logger.error(f"Error executing action: {str(e)}")
             return self._handle_error(f"Error executing action: {str(e)}")
 
     @staticmethod
@@ -343,44 +463,25 @@ class Agent:
             "error": error_msg
         }
 
-def create_initial_state(session_id: int, goal: str, screenshot: str, html: str) -> BrowserState:
-    """Create initial state for the agent."""
-    try:
-        # Validate inputs
-        if not isinstance(session_id, int):
-            raise ValueError("session_id must be an integer")
-        if not goal or not isinstance(goal, str):
-            raise ValueError("goal must be a non-empty string")
-        if not isinstance(html, str):
-            raise ValueError("html must be a string")
-        if not isinstance(screenshot, str):
-            raise ValueError("screenshot must be a string")
-        
-        logger.info(f"Creating initial state with goal: {goal}")
-        
-        # Create initial observation
-        initial_observation = Observation(
-            screenshot=screenshot,
-            html=html
-        )
-        logger.info("Created initial observation")
-        
-        # Create state with validated inputs
-        state = BrowserState(
-            goal=goal,
-            session_id=session_id,
-            observations=[initial_observation]  # Initialize with first observation
-        )
-        logger.info(f"Initial state created with {len(state.observations)} observations")
-        
-        # Verify state was created correctly
-        if not state.goal:
-            raise ValueError("State created with empty goal")
-        if not state.observations:
-            raise ValueError("State created with empty observations")
-            
-        logger.info(f"State created successfully. Observations count: {len(state.observations)}")
-        return state
-    except Exception as e:
-        logger.error(f"Error creating state: {str(e)}", exc_info=True)
-        raise ValueError(f"Failed to create state: {str(e)}")
+def create_initial_state(goal: str, screenshot: str, html: str, session_id: int) -> BrowserState:
+    """Create initial browser state."""
+    logger.info(f"Creating initial state with goal: {goal}")
+    
+    # Create initial observation
+    observation = Observation(
+        screenshot=screenshot,
+        html=html,
+        session_id=session_id
+    )
+    logger.info("Created initial observation")
+    
+    # Create initial state
+    state = BrowserState(
+        goal=goal,
+        observations=[observation],
+        past_actions=[],  # Explicitly initialize empty list
+        session_id=session_id  # Add session_id here
+    )
+    logger.info(f"Initial state created with {len(state.past_actions)} past actions")
+    
+    return state
