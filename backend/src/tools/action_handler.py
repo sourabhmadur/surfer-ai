@@ -190,7 +190,7 @@ class ActionHandler:
             return {
                 "success": True,
                 "type": "action",
-                "result": {
+                "data": {
                     "action": "wait",
                     "duration": duration
                 }
